@@ -1,0 +1,70 @@
+# Smart Tag application configuration.
+
+menu "Smart Tag"
+
+config SMART_TAG_FLASH_JEDEC_ID
+	bool
+	default y
+	depends on DT_HAS_JEDEC_SPI_NOR_ENABLED
+	select FLASH_JESD216_API
+	help
+	  Whether this board has an external flash whose JEDEC ID can be read
+	  at bring-up. True on the HOLyiot board; false on the nRF54L15 Tag,
+	  whose MX25R6435F footprint is not populated (BOM U8 = Not Fitted) and
+	  whose logs live in internal RRAM instead.
+
+	  Driven by the devicetree and set here rather than in
+	  boards/<board>.conf on purpose. Zephyr only applies a board .conf
+	  when CONF_FILE is left undefined (see configuration_files.cmake), so
+	  a perfectly reasonable-looking "-DCONF_FILE=prj.conf" would silently
+	  drop it and the build would fail at link with an undefined
+	  z_impl_flash_read_jedec_id. This file is always sourced.
+
+config SMART_TAG_HW_VALIDATION
+	bool "Build the hardware validation firmware"
+	help
+	  Replaces the product application with a standalone peripheral test
+	  runner (src/validation/hw_validation.c).
+
+	  The validation build deliberately talks to the SPI and I2C parts
+	  through raw register access rather than the Zephyr sensor drivers.
+	  A driver that refuses to bind reports one error for several possible
+	  causes - wrong chip select, wrong part fitted, dead bus - whereas a
+	  raw WHO_AM_I read on each chip select says which.
+
+	  Set by prj_validation.conf rather than by hand:
+
+	      west build -b holyiot_25025/nrf54l15/cpuapp -p always .
+	          -- -DCONF_FILE=prj_validation.conf
+
+config SMART_TAG_HW_VALIDATION_DESTRUCTIVE
+	bool "Include the destructive external flash test"
+	depends on SMART_TAG_HW_VALIDATION
+	default y
+	help
+	  Erases and rewrites the first sector of the event log partition to
+	  prove the external NOR can be written, not just identified. Turn off
+	  to leave the flash contents untouched.
+
+config SMART_TAG_BLE_ADVERTISE_AT_BOOT
+	bool "Open the BLE service window automatically at boot"
+	help
+	  Normally BLE only advertises when the button opens a service window
+	  (PLAN.md section 11) - see ble_manager.c. Set this to open that same
+	  window automatically once at boot instead, so BLE can be verified
+	  (e.g. with nRF Connect) without needing to press the physical
+	  button. It is the real service window, not a separate always-on
+	  mode: it still closes itself after ble_service_window_s like any
+	  other service window, and a button press still extends or reopens
+	  it as normal.
+
+	  For bring-up/verification only - leave this off for production
+	  builds, where advertising should stay off the battery budget until
+	  asked for.
+
+endmenu
+
+# Local out-of-tree drivers (see drivers/CMakeLists.txt and drivers/Kconfig).
+rsource "drivers/Kconfig"
+
+source "Kconfig.zephyr"

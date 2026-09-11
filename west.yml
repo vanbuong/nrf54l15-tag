@@ -1,0 +1,23 @@
+manifest:
+  remotes:
+    - name: ncs
+      url-base: https://github.com/nrfconnect
+
+  projects:
+    - name: nrf
+      remote: ncs
+      repo-path: sdk-nrf
+      revision: v3.4.0
+      import: true
+
+    # Nordic Zigbee R23 add-on (ZBOSS).  Uncomment together with the
+    # CONFIG_ZIGBEE_* options in prj.conf to build the Zigbee end device.
+    #
+    # - name: ncs-zigbee
+    #   remote: ncs
+    #   repo-path: ncs-zigbee
+    #   revision: v1.3.0
+    #   path: modules/lib/ncs-zigbee
+
+  self:
+    path: application

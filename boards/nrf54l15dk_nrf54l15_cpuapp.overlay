@@ -1,0 +1,263 @@
+/*
+ * Smart Tag V1 hardware pin mapping.
+ *
+ * This overlay can be used as a reference while bringing the application
+ * up on an nRF54L15 DK. For the production PCB, create a custom board
+ * target so the pin configuration is part of the board definition.
+ *
+ * Bus topology (from 25025-beacon-V1.0-sch.pdf):
+ *
+ *   SPI00 (fast domain, P2.xx only) -> LIS2DH12 + LPS22 pressure sensor
+ *   SPI21                           -> BY25Q16BSXIG 16-Mbit SPI NOR
+ *   TWIM22                          -> SHT40
+ *
+ * The NOR flash does NOT share the sensor SPI bus: the schematic gives it
+ * its own SCLK/SI/SO on P1.07/P1.06/P1.05.
+ */
+
+#include <zephyr/dt-bindings/sensor/lps22hh.h>
+#include <zephyr/dt-bindings/adc/nrf-saadc-nrf54l.h>
+
+/ {
+    aliases {
+        sht40 = &sht40;
+        lis2dh12 = &lis2dh12;
+        lps22 = &lps22;
+        user_button = &user_button;
+        led_red = &led_red;
+        led_green = &led_green;
+        led_blue = &led_blue;
+        ext_flash = &ext_flash;
+    };
+
+    /* Battery ADC channel, read by sensors/sensor_manager.c. */
+    zephyr_user: zephyr,user {
+        io-channels = <&adc 0>;
+    };
+
+    smart_tag_keys {
+        compatible = "gpio-keys";
+
+        user_button: button_0 {
+            gpios = <&gpio1 13 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+            label = "User Button";
+        };
+    };
+
+    smart_tag_leds {
+        compatible = "gpio-leds";
+
+        led_red: led_red {
+            gpios = <&gpio2 9 GPIO_ACTIVE_LOW>;
+            label = "RGB Red";
+        };
+
+        led_green: led_green {
+            gpios = <&gpio2 8 GPIO_ACTIVE_LOW>;
+            label = "RGB Green";
+        };
+
+        led_blue: led_blue {
+            gpios = <&gpio2 7 GPIO_ACTIVE_LOW>;
+            label = "RGB Blue";
+        };
+    };
+};
+
+/*
+ * The DK definition puts an MX25R64 on SPI00 chip select 0.  Smart Tag has
+ * the accelerometer there instead, so the DK node has to go.
+ */
+/delete-node/ &mx25r64;
+
+/* Sensor SPI bus: SCK P2.01, MOSI P2.02, MISO P2.04. */
+/*
+ * 8 MHz, not 10: SPIM00's base clock is 128 MHz and nrfx requires the
+ * requested frequency to divide it exactly into an even prescaler, so
+ * 10 MHz is rejected by nrfx_spim_init() with -EINVAL. Unlike nRF52/nRF53,
+ * nRF54L does not round down to a supported step. See the board pinctrl
+ * .dtsi header for the full arithmetic.
+ */
+&spi00 {
+    status = "okay";
+    pinctrl-0 = <&spi00_smart_tag_default>;
+    pinctrl-1 = <&spi00_smart_tag_sleep>;
+    pinctrl-names = "default", "sleep";
+
+    cs-gpios = <&gpio2 6 GPIO_ACTIVE_LOW>,   /* CS_LIS2DH12 */
+               <&gpio2 5 GPIO_ACTIVE_LOW>;   /* CS_LPS22     */
+
+    lis2dh12: lis2dh12@0 {
+        compatible = "st,lis2dh";
+        reg = <0>;
+        spi-max-frequency = <8000000>;
+
+        /* INT1 = P2.00, INT2 = P2.03, both active high out of the sensor. */
+        irq-gpios = <&gpio2 0 GPIO_ACTIVE_HIGH>,
+                    <&gpio2 3 GPIO_ACTIVE_HIGH>;
+
+        /* LIS2DH12 has an SDO/SA0 pull-up that wastes current in SPI mode. */
+        disconnect-sdo-sa0-pull-up;
+
+        status = "okay";
+    };
+
+    /*
+     * Schematic part is an LPS22HB.  Zephyr has no SPI-capable LPS22HB
+     * driver, so the register-compatible LPS22HH driver is used.  See
+     * README.md - the LPS22HH driver enforces WHO_AM_I == 0xB3.
+     */
+    lps22: lps22hh@1 {
+        compatible = "st,lps22hh";
+        reg = <1>;
+        spi-max-frequency = <8000000>;
+        odr = <LPS22HH_DT_ODR_1HZ>;
+        status = "okay";
+    };
+};
+
+/*
+ * External 2 MB SPI NOR on its own bus.
+ * BY25Q16BSXIG is a 16-Mbit / 2-MB SPI NOR.
+ * SCLK P1.07, MOSI/SI P1.06, MISO/SO P1.05, CS P1.04.
+ */
+&spi21 {
+    status = "okay";
+    pinctrl-0 = <&spi21_smart_tag_default>;
+    pinctrl-1 = <&spi21_smart_tag_sleep>;
+    pinctrl-names = "default", "sleep";
+
+    cs-gpios = <&gpio1 4 GPIO_ACTIVE_LOW>;
+
+    ext_flash: flash@0 {
+        compatible = "jedec,spi-nor";
+        reg = <0>;
+        spi-max-frequency = <8000000>;
+
+        /* Boya BY25Q16BS. Confirm against the JEDEC ID read at bring-up. */
+        jedec-id = [68 40 15];
+        /* "size" is in BITS: 16 Mbit. */
+        size = <16777216>;
+
+        has-dpd;
+        t-enter-dpd = <3000>;
+        t-exit-dpd = <30000>;
+
+        status = "okay";
+
+        partitions {
+            compatible = "fixed-partitions";
+            #address-cells = <1>;
+            #size-cells = <1>;
+
+            /*
+             * PLAN.md section 9. Two independent circular logs, so a
+             * burst of shock events cannot evict the climate history a
+             * shipping audit needs, and vice versa. Configuration and
+             * statistics live in the internal RRAM settings partition
+             * instead - see src/storage/config_storage.h.
+             */
+            event_log_partition: partition@0 {
+                label = "event-log";
+                reg = <0x00000000 DT_SIZE_K(256)>;
+            };
+
+            sensor_log_partition: partition@40000 {
+                label = "sensor-history";
+                reg = <0x00040000 DT_SIZE_K(1792)>;
+            };
+        }
+    };
+};
+
+&i2c22 {
+    status = "okay";
+    clock-frequency = <I2C_BITRATE_FAST>;
+    pinctrl-0 = <&i2c22_smart_tag_default>;
+    pinctrl-1 = <&i2c22_smart_tag_sleep>;
+    pinctrl-names = "default", "sleep";
+
+    sht40: sht4x@45 {
+        compatible = "sensirion,sht4x";
+        reg = <0x45>;
+        repeatability = <2>;
+        status = "okay";
+    };
+};
+
+&pinctrl {
+    i2c22_smart_tag_default: i2c22_smart_tag_default {
+        group1 {
+            psels = <NRF_PSEL(TWIM_SCL, 1, 10)>,
+                    <NRF_PSEL(TWIM_SDA, 1, 11)>;
+            bias-pull-up;
+        };
+    };
+
+    i2c22_smart_tag_sleep: i2c22_smart_tag_sleep {
+        group1 {
+            psels = <NRF_PSEL(TWIM_SCL, 1, 10)>,
+                    <NRF_PSEL(TWIM_SDA, 1, 11)>;
+            low-power-enable;
+        };
+    };
+
+    spi00_smart_tag_default: spi00_smart_tag_default {
+        group1 {
+            psels = <NRF_PSEL(SPIM_SCK, 2, 1)>,
+                    <NRF_PSEL(SPIM_MOSI, 2, 2)>,
+                    <NRF_PSEL(SPIM_MISO, 2, 4)>;
+        };
+    };
+
+    spi00_smart_tag_sleep: spi00_smart_tag_sleep {
+        group1 {
+            psels = <NRF_PSEL(SPIM_SCK, 2, 1)>,
+                    <NRF_PSEL(SPIM_MOSI, 2, 2)>,
+                    <NRF_PSEL(SPIM_MISO, 2, 4)>;
+            low-power-enable;
+        };
+    };
+
+    spi21_smart_tag_default: spi21_smart_tag_default {
+        group1 {
+            psels = <NRF_PSEL(SPIM_SCK, 1, 7)>,
+                    <NRF_PSEL(SPIM_MOSI, 1, 6)>,
+                    <NRF_PSEL(SPIM_MISO, 1, 5)>;
+        };
+    };
+
+    spi21_smart_tag_sleep: spi21_smart_tag_sleep {
+        group1 {
+            psels = <NRF_PSEL(SPIM_SCK, 1, 7)>,
+                    <NRF_PSEL(SPIM_MOSI, 1, 6)>,
+                    <NRF_PSEL(SPIM_MISO, 1, 5)>;
+            low-power-enable;
+        };
+    };
+};
+
+/* Disable the DK UART because P1.04/P1.05 are SPI-NOR pins on Smart Tag. */
+&uart20 {
+    status = "disabled";
+};
+
+/*
+ * Battery measurement. There is no divider on the PCB - the CR2032 feeds VCC
+ * through a P-channel FET with no regulator, so the SoC supply rail is the
+ * cell voltage and the SAADC's internal AVDD channel reads it directly.
+ */
+&adc {
+    status = "okay";
+    #address-cells = <1>;
+    #size-cells = <0>;
+
+    channel@0 {
+        reg = <0>;
+        zephyr,gain = "ADC_GAIN_1_4";
+        zephyr,reference = "ADC_REF_INTERNAL";
+        zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 10)>;
+        zephyr,input-positive = <NRF_SAADC_AVDD>;
+        zephyr,resolution = <12>;
+    };
+};

@@ -1,0 +1,5 @@
+# Local out-of-tree drivers.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+rsource "sensor/lps22hb_spi/Kconfig"

@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# The product has no UART header - the console backend is chosen by the
+# application (SEGGER RTT).  Only the generic console layer is enabled here.
+CONFIG_CONSOLE=y
+
+CONFIG_GPIO=y
+
+# Enable MPU
+CONFIG_ARM_MPU=y

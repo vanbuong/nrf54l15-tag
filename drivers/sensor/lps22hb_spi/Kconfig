@@ -1,0 +1,18 @@
+# HOLyiot LPS22HB pressure sensor (SPI), local out-of-tree driver.
+#
+# Copyright (c) 2026 HOLyiot
+# SPDX-License-Identifier: Apache-2.0
+
+config LPS22HB_SPI
+	bool "LPS22HB pressure sensor (SPI, local driver)"
+	default y
+	depends on DT_HAS_HOLYIOT_LPS22HB_ENABLED
+	depends on SENSOR
+	select SPI
+	help
+	  Local driver for the LPS22HB pressure sensor over SPI. Exists
+	  because Zephyr's in-tree "st,lps22hh" driver refuses to bind to a
+	  real LPS22HB (WHO_AM_I 0xB1) - see the top-level README's
+	  LPS22HB/LPS22HH note. The register layout is otherwise compatible,
+	  so this driver reuses the same CTRL_REG1/PRESS_OUT sequence, just
+	  without the strict ID check.

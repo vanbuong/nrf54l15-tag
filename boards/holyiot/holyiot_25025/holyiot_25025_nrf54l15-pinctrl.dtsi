@@ -1,0 +1,92 @@
+/*
+ * HOLyiot 25025 Beacon V1.0 - pin control.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
+ * All three buses run as real hardware peripherals. Getting here took two
+ * false starts, both blamed on the same misreading of the nRF54L15
+ * datasheet's pin assignment table - P2.01 (SPIM00 SCK), P1.07 (SPIM21 SCK)
+ * and P1.09 (TWIM22 SCL) were each assumed to be not clock-capable, and each
+ * bus was bit-banged over plain GPIO for a while as a result.
+ *
+ * None of that was true. There is no pin-capability check in the nRF54L SPIM
+ * path at all: nrfx_spim_init()'s only -EINVAL is a frequency check, and the
+ * dedicated-pin check next to it is guarded by `p_reg == NRF_SPIM4`, which is
+ * an nRF52840/nRF5340 rule that cannot fire on this die. Each failure had a
+ * mundane config cause - a wrong NOR flash jedec-id, a wrong SHT40 address,
+ * and for SPIM00 a spi-max-frequency of 10 MHz.
+ *
+ * The 10 MHz one is worth remembering, because it does not look like a
+ * config bug. SPIM00's base clock is 128 MHz and nrfx requires the requested
+ * frequency to divide it exactly, into an even prescaler in 4..126:
+ *
+ *     prescaler = 128 MHz / 10 MHz = 12
+ *     (128 MHz % 10 MHz) < prescaler  ->  8000000 < 12  ->  reject, -EINVAL
+ *
+ * On nRF52/nRF53 the same value would have been silently rounded down to the
+ * 8 MHz enum step and worked; on nRF54L resolve_freq() returns it unchanged
+ * (NRF_SPIM_HAS_PRESCALER), so it reaches nrfx verbatim and hard-fails. Keep
+ * every spi-max-frequency on SPIM00 an exact even divisor of 128 MHz - 32,
+ * 16, 8, 4, 2 or 1 MHz. SPIM21's base is 16 MHz, so its own divisors differ.
+ */
+&pinctrl {
+	/*
+	 * Sensor SPI bus (SPIM00, high-speed domain - port P2).
+	 * SCK P2.01, MOSI P2.02, MISO P2.04.
+	 */
+	/omit-if-no-ref/ spi00_default: spi00_default {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 2, 1)>,
+				<NRF_PSEL(SPIM_MOSI, 2, 2)>,
+				<NRF_PSEL(SPIM_MISO, 2, 4)>;
+		};
+	};
+
+	/omit-if-no-ref/ spi00_sleep: spi00_sleep {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 2, 1)>,
+				<NRF_PSEL(SPIM_MOSI, 2, 2)>,
+				<NRF_PSEL(SPIM_MISO, 2, 4)>;
+			low-power-enable;
+		};
+	};
+
+	/*
+	 * SPI NOR bus (SPIM21, main power domain - port P1).
+	 * SCLK P1.07, SI/MOSI P1.06, SO/MISO P1.05.
+	 */
+	/omit-if-no-ref/ spi21_default: spi21_default {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 1, 7)>,
+				<NRF_PSEL(SPIM_MOSI, 1, 6)>,
+				<NRF_PSEL(SPIM_MISO, 1, 5)>;
+		};
+	};
+
+	/omit-if-no-ref/ spi21_sleep: spi21_sleep {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 1, 7)>,
+				<NRF_PSEL(SPIM_MOSI, 1, 6)>,
+				<NRF_PSEL(SPIM_MISO, 1, 5)>;
+			low-power-enable;
+		};
+	};
+
+	/* SHT40 I2C (TWIM22). SCL P1.9, SDA P1.11. */
+	/omit-if-no-ref/ i2c22_default: i2c22_default {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SCL, 1, 9)>,
+				<NRF_PSEL(TWIM_SDA, 1, 11)>;
+			bias-pull-up;
+		};
+	};
+
+	/omit-if-no-ref/ i2c22_sleep: i2c22_sleep {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SCL, 1, 9)>,
+				<NRF_PSEL(TWIM_SDA, 1, 11)>;
+			low-power-enable;
+		};
+	};
+};

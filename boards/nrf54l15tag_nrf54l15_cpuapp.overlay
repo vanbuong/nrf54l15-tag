@@ -1,0 +1,190 @@
+/*
+ * Nordic nRF54L15 Tag (PCA20072) - application overlay.
+ *
+ * Zephyr already ships this board (zephyr/boards/nordic/nrf54l15tag). That
+ * board file defines the buses and sensor nodes correctly against the
+ * schematic - i2c21 on SDA P1.12 / SCL P1.11 carrying the BME688 at 0x76 and
+ * the ADXL367 at 0x1D, and spi22 on SCK P1.08 / MOSI P1.06 / MISO P1.05 with
+ * CS P1.07 carrying the BMI270 - but ships all three sensor nodes disabled.
+ * This overlay turns them on and adds the two things the board file leaves
+ * out: the ADXL367 interrupt line and somewhere to put the logs.
+ *
+ * What is NOT here is deliberate. Per the PCA20072 BOM's "Fitted" column,
+ * the following are depopulated on this assembly and so are not described
+ * anywhere in devicetree or code:
+ *
+ *   U8   MX25R6435F external flash   Not Fitted  (see the partition note)
+ *   LED2 second RGB LED              Not Fitted  (+ R14/R15/R16)
+ *   SW2, SW3 second/third buttons    Not Fitted
+ *   Bz1  piezo buzzer                Not Fitted
+ *   Q1   TEMT6200FX01 light sensor   Not Fitted  (+ R4, Q2, Q3)
+ *
+ * The board file already marks led2_*, rgb_led_2 and button1 as disabled,
+ * which matches the BOM - they are left alone rather than enabled here.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/adc/nrf-saadc.h>
+
+/ {
+	aliases {
+		/*
+		 * The application reaches every sensor through an alias, so
+		 * sensor_manager.c does not name a part or a bus.
+		 */
+		bme688 = &bme688;
+		adxl367 = &adxl367;
+		bmi270 = &bmi270;
+
+		/*
+		 * Only LED1 is fitted. led_manager.c drives three single-colour
+		 * channels, so map them onto LED1's red/green/blue.
+		 */
+		led-red = &led1_red;
+		led-green = &led1_green;
+		led-blue = &led1_blue;
+		led0 = &led1_red;
+		led1 = &led1_green;
+		led2 = &led1_blue;
+
+		/* SW1 (BTN1, P0.00) is the only fitted switch. */
+		sw0 = &button0;
+		user-button = &button0;
+
+		watchdog0 = &wdt31;
+
+		/*
+		 * Deliberately no ext-flash alias: U8 is not fitted. Code that
+		 * reads the external flash JEDEC ID is compiled out on this
+		 * board by DT_NODE_EXISTS(DT_ALIAS(ext_flash)).
+		 */
+	};
+
+	/*
+	 * Battery ADC channel. Same topology as the HOLyiot board: schematic
+	 * sheet 5 puts the CR2032 holder straight onto VDD through SB1 (a
+	 * current-measurement bridge), with no regulator and no divider, so
+	 * the SAADC's internal VDD channel reads the cell directly.
+	 *
+	 * NRF_SAADC_VDD, not NRF_SAADC_AVDD: on nRF54L15 the latter is the
+	 * internal 0.9 V analog rail, unrelated to the battery.
+	 */
+	zephyr_user: zephyr,user {
+		io-channels = <&adc 0>;
+	};
+};
+
+&adc {
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	channel@0 {
+		reg = <0>;
+		zephyr,gain = "ADC_GAIN_1_4";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 10)>;
+		zephyr,input-positive = <NRF_SAADC_VDD>;
+		zephyr,resolution = <12>;
+	};
+};
+
+/*
+ * BME688: temperature, humidity, pressure and gas resistance from a single
+ * fetch. Register-compatible with the BME680, which is the in-tree driver.
+ */
+&bme688 {
+	status = "okay";
+};
+
+/*
+ * ADXL367: the low-power accelerometer, and the wake source.
+ *
+ * int1-gpios is the one functional addition this overlay makes. The board
+ * file omits it, and without it the driver builds without trigger support
+ * and the tag falls back to pure polling - which is exactly the limitation
+ * the HOLyiot board was stuck with, where the accelerometer interrupts
+ * landed on port P2 (no GPIOTE, no SENSE). Here INT1 is on P0.03: port P0
+ * has GPIOTE30 and supports pin sense, so this line can raise an interrupt
+ * and could wake the SoC from System OFF if that is ever wanted.
+ */
+&adxl367 {
+	status = "okay";
+	int1-gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>;
+};
+
+/* BMI270: 6-axis IMU, read only while the tag is moving. */
+&bmi270 {
+	status = "okay";
+};
+
+/*
+ * Log storage.
+ *
+ * The MX25R6435F footprint is depopulated, so the event log and sensor
+ * history move into internal RRAM. flash_manager needs no porting for this:
+ * it writes whole 32-byte slots at 32-byte-aligned offsets and erases whole
+ * sectors, and RRAM's 16-byte write block and 4096-byte erase block both
+ * divide that cleanly.
+ *
+ * The upstream table is mcuboot 62K / slot0 712K / slot1 712K / storage 36K,
+ * which spends the entire 1524K. The application is ~200K, so both image
+ * slots are cut to 480K and the freed space carries the logs. slot1 is kept
+ * rather than reclaimed because zigbee_ota.c and sysbuild.conf both
+ * anticipate an OTA slot.
+ *
+ * storage_partition deliberately keeps its upstream address, so settings
+ * already saved on a device stay readable across this change.
+ *
+ *   boot_partition        0x000000   62K   (unchanged)
+ *   slot0_partition       0x010000  480K
+ *   slot1_partition       0x088000  480K
+ *   event_log_partition   0x100000   64K
+ *   sensor_log_partition  0x110000  400K
+ *   storage_partition     0x174000   36K   (unchanged)
+ */
+/*
+ * slot0 keeps its 0x10000 start, so overriding reg in place is enough. slot1
+ * moves, and a node's unit address has to match the first cell of reg, so it
+ * cannot be resized in place - dtc rejects "partition@c2000" with a reg of
+ * 0x88000. Delete it and redeclare it at its new address instead.
+ */
+&slot0_partition {
+	reg = <0x00010000 DT_SIZE_K(480)>;
+};
+
+/delete-node/ &slot1_partition;
+
+&cpuapp_rram {
+	partitions {
+		slot1_partition: partition@88000 {
+			compatible = "zephyr,mapped-partition";
+			label = "image-1";
+			reg = <0x00088000 DT_SIZE_K(480)>;
+		};
+
+		/*
+		 * PLAN.md section 9. Two independent circular logs, so a burst
+		 * of shock events cannot evict the climate history a shipping
+		 * audit needs, and vice versa.
+		 *
+		 * zephyr,mapped-partition matches the surrounding table.
+		 * PARTITION_ID() resolves it the same way it resolves a
+		 * fixed-partitions child, so event_log.c and sensor_log.c need
+		 * no change beyond the macro rename.
+		 */
+		event_log_partition: partition@100000 {
+			compatible = "zephyr,mapped-partition";
+			label = "event-log";
+			reg = <0x00100000 DT_SIZE_K(64)>;
+		};
+
+		sensor_log_partition: partition@110000 {
+			compatible = "zephyr,mapped-partition";
+			label = "sensor-history";
+			reg = <0x00110000 DT_SIZE_K(400)>;
+		};
+	};
+};

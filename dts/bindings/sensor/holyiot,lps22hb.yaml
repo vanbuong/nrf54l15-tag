@@ -1,0 +1,20 @@
+# Copyright (c) 2026 HOLyiot
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  LPS22HB pressure sensor connected over SPI.
+
+  Only SENSOR_CHAN_PRESS is implemented - the part also has a TEMP_OUT
+  register, but nothing on this board needs it (the SHT40 is the temperature
+  source), so the driver never reads it.
+
+  Register-compatible with ST's LPS22HH - same CTRL_REG1 ODR/BDU bits, same
+  24-bit PRESS_OUT registers, auto-increment always on for burst reads -
+  but Zephyr's in-tree "st,lps22hh" driver hard-rejects this part's real
+  WHO_AM_I (0xB1, not 0xB3) and refuses to bind. See the top-level README's
+  LPS22HB/LPS22HH note. drivers/sensor/lps22hb_spi is a small local driver
+  that accepts either ID and otherwise follows the same sequence.
+
+compatible: "holyiot,lps22hb"
+
+include: ["spi-device.yaml", "sensor-device.yaml"]

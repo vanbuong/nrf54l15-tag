@@ -1,0 +1,358 @@
+/*
+ * HOLyiot 25025 Beacon V1.0 (nRF54L15 Smart Tag) - application core.
+ *
+ * Derived from schematic 25025-beacon-V1.0-sch.pdf.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/dts-v1/;
+
+#include <nordic/nrf54l15_cpuapp.dtsi>
+#include <zephyr/dt-bindings/adc/nrf-saadc.h>
+#include "holyiot_25025_nrf54l15-pinctrl.dtsi"
+
+/ {
+	compatible = "holyiot,holyiot-25025-cpuapp";
+	model = "HOLyiot 25025 Beacon V1.0 nRF54L15 Application MCU";
+
+	chosen {
+		zephyr,flash-controller = &rram_controller;
+		zephyr,flash = &cpuapp_rram;
+		zephyr,sram = &cpuapp_sram;
+		zephyr,code-partition = &slot0_partition;
+		zephyr,ieee802154 = &ieee802154;
+		zephyr,boot-mode = &boot_mode0;
+		/*
+		 * No zephyr,console / zephyr,shell-uart: the product exposes no
+		 * UART.  Use SEGGER RTT (CONFIG_RTT_CONSOLE=y).
+		 */
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		/* RGB LED is common anode, so the GPIOs are active low. */
+		led_red: led_red {
+			gpios = <&gpio2 9 GPIO_ACTIVE_LOW>;
+			label = "RGB Red";
+		};
+
+		led_green: led_green {
+			gpios = <&gpio1 10 GPIO_ACTIVE_LOW>;
+			label = "RGB Green";
+		};
+
+		led_blue: led_blue {
+			gpios = <&gpio2 7 GPIO_ACTIVE_LOW>;
+			label = "RGB Blue";
+		};
+	};
+
+	buttons {
+		compatible = "gpio-keys";
+
+		/* 100 kOhm pull-up to VCC, switch to GND. */
+		user_button: button_0 {
+			gpios = <&gpio1 13 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "User Button";
+			zephyr,code = <INPUT_KEY_0>;
+		};
+	};
+
+	aliases {
+		led0 = &led_red;
+		led1 = &led_green;
+		led2 = &led_blue;
+		led-red = &led_red;
+		led-green = &led_green;
+		led-blue = &led_blue;
+		sw0 = &user_button;
+		user-button = &user_button;
+		sht40 = &sht40;
+		lis2dh12 = &lis2dh12;
+		lps22 = &lps22;
+		ext-flash = &ext_flash;
+		watchdog0 = &wdt31;
+	};
+
+	/* Battery ADC channel, read by sensors/sensor_manager.c. */
+	zephyr_user: zephyr,user {
+		io-channels = <&adc 0>;
+	};
+};
+
+&cpuapp_sram {
+	status = "okay";
+};
+
+/*
+ * Y2 = 32.768 kHz, Y1 = 32 MHz, both with small external trim capacitors
+ * (0.5 pF / 0.75 pF / 3.9 pF on the schematic), so the on-chip load
+ * capacitors are in use.
+ *
+ * TODO: the values below are the nRF54L15 DK defaults.  Measure the actual
+ * frequency error on hardware and trim them to the crystals' specified CL
+ * before release - they affect BLE/802.15.4 frequency accuracy.
+ */
+&lfxo {
+	load-capacitors = "internal";
+	load-capacitance-femtofarad = <17000>;
+};
+
+&hfxo {
+	load-capacitors = "internal";
+	load-capacitance-femtofarad = <15000>;
+};
+
+&regulators {
+	status = "okay";
+};
+
+&vregmain {
+	status = "okay";
+	regulator-initial-mode = <NRF5X_REG_MODE_DCDC>;
+};
+
+&grtc {
+	owned-channels = <0 1 2 3 4 5 6 7 8 9 10 11>;
+	/* Channels 7-11 reserved for Zero Latency IRQs, 3-4 for FLPR */
+	child-owned-channels = <3 4 7 8 9 10 11>;
+	status = "okay";
+};
+
+&gpio0 {
+	status = "okay";
+};
+
+&gpio1 {
+	status = "okay";
+};
+
+&gpio2 {
+	status = "okay";
+};
+
+/*
+ * GPIOTE20 covers port P1 (user button).  Port P2 has no GPIOTE at all on
+ * nRF54L15, so the LIS2DH12 INT1/INT2 lines on P2.00/P2.03 cannot raise
+ * GPIO interrupts or wake the SoC - see the board README.
+ */
+&gpiote20 {
+	status = "okay";
+};
+
+&gpiote30 {
+	status = "okay";
+};
+
+&radio {
+	status = "okay";
+};
+
+&ieee802154 {
+	status = "okay";
+};
+
+&temp {
+	status = "okay";
+};
+
+&clock {
+	status = "okay";
+};
+
+/*
+ * Battery measurement. There is no divider on the PCB - the CR2032 feeds VCC
+ * through a P-channel FET with no regulator, so the SoC supply rail is the
+ * cell voltage and the SAADC's internal VDD channel reads it directly.
+ *
+ * NOT NRF_SAADC_AVDD: on nRF54L15 that channel is the internal 0.9 V analog
+ * supply rail (SAADC_CH_PSELP_INTERNAL_Avdd, see nrf54l15_types.h), unrelated
+ * to the battery. NRF_SAADC_VDD (SAADC_CH_PSELP_INTERNAL_Vdd, "Connected to
+ * VDD") is the one that reads the actual supply pin. NRF_SAADC_VBAT does not
+ * exist on this die - it's a dt-binding shim shared with other nRF54 parts.
+ */
+&adc {
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	channel@0 {
+		reg = <0>;
+		zephyr,gain = "ADC_GAIN_1_4";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 10)>;
+		zephyr,input-positive = <NRF_SAADC_VDD>;
+		zephyr,resolution = <12>;
+	};
+};
+
+&gpregret1 {
+	status = "okay";
+
+	boot_mode0: boot_mode@0 {
+		compatible = "zephyr,retention";
+		status = "okay";
+		reg = <0x0 0x1>;
+	};
+};
+
+/*
+ * Sensor SPI bus, real hardware SPIM00 (high-speed domain, port P2).
+ * SCK P2.01, MOSI P2.02, MISO P2.04, CS_LIS2DH12 P2.05, CS_LPS22 P2.06.
+ *
+ * This bus was bit-banged over GPIO for a while, on the belief that P2.01
+ * was not a clock-capable SCK pin for SPIM00. It is. The -EINVAL that
+ * conclusion rested on came from spi-max-frequency = 10 MHz, which SPIM00's
+ * 128 MHz base clock cannot divide down to - see the pinctrl .dtsi header
+ * for the arithmetic. At 8 MHz the peripheral initialises and both parts
+ * answer; confirmed on hardware.
+ *
+ * Keep spi-max-frequency here an exact even divisor of 128 MHz. 8 MHz is
+ * also comfortably under the 10 MHz ceiling both parts specify.
+ */
+&spi00 {
+	status = "okay";
+	pinctrl-0 = <&spi00_default>;
+	pinctrl-1 = <&spi00_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	cs-gpios = <&gpio2 5 GPIO_ACTIVE_LOW>,	/* CS_LIS2DH12 */
+		   <&gpio2 6 GPIO_ACTIVE_LOW>;	/* CS_LPS22     */
+
+	lis2dh12: lis2dh12@0 {
+		compatible = "st,lis2dh";
+		reg = <0>;
+		spi-max-frequency = <8000000>;
+
+		/*
+		 * INT1 = P2.00, INT2 = P2.03, active high out of the sensor.
+		 *
+		 * WARNING: port P2 on nRF54L15 has no GPIOTE and no SENSE /
+		 * DETECT, so these lines can NOT raise a GPIO interrupt and
+		 * can NOT wake the SoC.  They are declared here because that
+		 * is how the PCB is wired, but do not enable
+		 * CONFIG_LIS2DH_TRIGGER_* - gpio_pin_interrupt_configure()
+		 * returns -ENOTSUP and the driver's init will fail.
+		 * Motion detection has to be polled on this revision.
+		 *
+		 * This one is a genuine silicon limitation, unrelated to the
+		 * bit-bang episode above - it is not another config bug.
+		 */
+		// irq-gpios = <&gpio2 0 GPIO_ACTIVE_HIGH>,
+		// 	    <&gpio2 3 GPIO_ACTIVE_HIGH>;
+
+		/* Save the SDO/SA0 pull-up leakage - unused in 4-wire SPI. */
+		disconnect-sdo-sa0-pull-up;
+
+		status = "okay";
+	};
+
+	/*
+	 * The schematic part is an LPS22HB (WHO_AM_I 0xB1). Zephyr's lps22hb
+	 * driver is I2C only, and the SPI-capable, register-compatible
+	 * lps22hh driver rejects any WHO_AM_I other than 0xB3 - see the
+	 * board README. Bound to the local drivers/sensor/lps22hb_spi driver
+	 * instead (CONFIG_LPS22HB_SPI, CONFIG_LPS22HH stays off), which
+	 * accepts either ID and otherwise follows the same register
+	 * sequence.
+	 */
+	lps22: lps22hb@1 {
+		compatible = "holyiot,lps22hb";
+		reg = <1>;
+		spi-max-frequency = <8000000>;
+		status = "okay";
+	};
+};
+
+/*
+ * External SPI NOR, real hardware SPIM21. P1.07 (SCK) is clock-capable - the
+ * original failure here was a wrong jedec-id, not a pin restriction.
+ * Confirmed on hardware: with the corrected ID this bus reads/erases/writes
+ * fine as SPIM21.
+ *
+ * 8 MHz against SPIM21's 16 MHz base clock gives prescaler 2, which is
+ * exact. Do not copy frequencies between this node and spi00 - the two
+ * instances have different base clocks.
+ */
+&spi21 {
+	status = "okay";
+	pinctrl-0 = <&spi21_default>;
+	pinctrl-1 = <&spi21_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	cs-gpios = <&gpio1 4 GPIO_ACTIVE_LOW>;
+
+	ext_flash: flash@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0>;
+		spi-max-frequency = <8000000>;
+
+		/*
+		 * 68 40 15 (assumed Boya BY25Q16BS) was wrong. A raw RDID
+		 * (0x9f) read during bring-up - both at boot, through the
+		 * jedec,spi-nor driver's own ID check, and independently via
+		 * a hand-issued command in hw_validation.c - consistently
+		 * reports 68 10 15. Manufacturer (68) and capacity (15, 16
+		 * Mbit) match Boya as expected; only the memory-type byte
+		 * differs, most likely a different BY25Q16B sub-variant than
+		 * assumed rather than a different part entirely.
+		 */
+		jedec-id = [68 10 15];
+		/* "size" is in bits. */
+		size = <16777216>;
+
+		has-dpd;
+		t-enter-dpd = <3000>;
+		t-exit-dpd = <30000>;
+
+		status = "okay";
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			/*
+			 * PLAN.md section 9. Two independent circular logs, so a
+			 * burst of shock events cannot evict the climate history a
+			 * shipping audit needs, and vice versa. Configuration and
+			 * statistics live in the internal RRAM settings partition
+			 * instead - see src/storage/config_storage.h.
+			 */
+			event_log_partition: partition@0 {
+				label = "event-log";
+				reg = <0x00000000 DT_SIZE_K(256)>;
+			};
+
+			sensor_log_partition: partition@40000 {
+				label = "sensor-history";
+				reg = <0x00040000 DT_SIZE_K(1792)>;
+			};
+		};
+	};
+};
+
+/*
+ * SHT40 I2C, real hardware TWIM22. P1.09 (SCL) is clock-capable - the
+ * original failure here was the wrong SHT40 address (0x45 assumed, 0x44
+ * fitted), not a pin restriction. Confirmed on hardware: with the corrected
+ * address this bus scans and reads fine as TWIM22.
+ */
+&i2c22 {
+	status = "okay";
+	clock-frequency = <I2C_BITRATE_FAST>;
+	pinctrl-0 = <&i2c22_default>;
+	pinctrl-1 = <&i2c22_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	sht40: sht4x@44 {
+		compatible = "sensirion,sht4x";
+		reg = <0x44>;
+		repeatability = <2>;
+		status = "okay";
+	};
+};
+
+/* Include default memory partition configuration file */
+#include <vendor/nordic/nrf54l15_cpuapp_partition.dtsi>

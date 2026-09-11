@@ -1,0 +1,34 @@
+board:
+  name: holyiot_25025
+  full_name: HOLyiot 25025 Beacon V1.0 (nRF54L15 Smart Tag)
+  vendor: holyiot
+  socs:
+    - name: nrf54l15
+runners:
+  run_once:
+    '--recover':
+      - runners:
+          - nrfjprog
+          - nrfutil
+        run: first
+        groups:
+          - boards:
+              - holyiot_25025/nrf54l15/cpuapp
+    '--erase':
+      - runners:
+          - nrfjprog
+          - jlink
+          - nrfutil
+        run: first
+        groups:
+          - boards:
+              - holyiot_25025/nrf54l15/cpuapp
+    '--reset':
+      - runners:
+          - nrfjprog
+          - jlink
+          - nrfutil
+        run: last
+        groups:
+          - boards:
+              - holyiot_25025/nrf54l15/cpuapp

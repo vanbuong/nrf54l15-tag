@@ -1,0 +1,20 @@
+identifier: holyiot_25025/nrf54l15/cpuapp
+name: HOLyiot-25025-nRF54L15-Application
+type: mcu
+arch: arm
+vendor: holyiot
+toolchain:
+  - gnuarmemb
+  - zephyr
+sysbuild: true
+ram: 188
+flash: 1428
+supported:
+  - gpio
+  - i2c
+  - spi
+  - sensor
+  - flash
+  - watchdog
+  - counter
+  - adc
