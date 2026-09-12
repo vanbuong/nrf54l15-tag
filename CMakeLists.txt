@@ -27,6 +27,7 @@ else()
       src/app/app_main.c
       src/app/app_state.c
       src/app/app_config.c
+      src/app/app_alarms.c
 
       src/sensors/sensor_manager.c
 

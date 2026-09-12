@@ -10,8 +10,10 @@ debug over RTT (DESIGN.md §13).
 |---|---|---|
 | motion classifier | `src/motion/motion_classifier.c` | activity, orientation |
 | shock detector | `src/motion/shock_detector.c` | latch / re-arm, peak |
+| motion manager | `src/motion/motion_manager.c` | start/stop timeout, tamper |
 | Zigbee reporting | `src/zigbee/zigbee_reporting.c` | deltas, heartbeat, gas |
 | config validation | `src/app/app_config.c` | ranges, mode interval |
+| alarm policy | `src/app/app_alarms.c` | latch, hysteresis, gas floor |
 | flash logger | `src/storage/flash_manager.c` | CRC, wrap, torn write (RAM mock) |
 | config migrate | `src/storage/config_migrate.c` | v3 blobs, schema 1 header |
 | wire types | `src/app/smart_tag.h` | packing, battery map, log record, epoch |
@@ -31,7 +33,7 @@ make -C tests/unit clean
 ```
 
 Coverage HTML lands in `coverage/index.html`. The 80 % line-coverage
-floor applies to the six policy sources above, not to Zephyr drivers or
+floor applies to the policy sources above, not to Zephyr drivers or
 the BLE/Zigbee stacks.
 
 ## How the stubs work

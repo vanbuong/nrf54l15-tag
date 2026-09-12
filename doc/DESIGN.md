@@ -195,7 +195,7 @@ IDs are stable. Tests in §13 reference them.
 | NFR-R1 | A torn log write shall not prevent boot or subsequent appends. |
 | NFR-R2 | A missing sensor shall not prevent the rest of the firmware from running. |
 | NFR-R3 | A watchdog shall count CPU time only (`PAUSE_IN_SLEEP`), fed from sampling, BLE work, and log erase. |
-| NFR-M1 | Policy modules (classifier, shock, reporting, config validation, flash slot format, config migrate) shall be unit-testable on the host with Unity. |
+| NFR-M1 | Policy modules (classifier, shock, motion manager, reporting, config validation, alarm policy, flash slot format, config migrate) shall be unit-testable on the host with Unity. |
 | NFR-M2 | Board differences shall be confined to overlay, `boards/<board>.conf`, one sensor backend file, and one validation file. |
 | NFR-S1 | No plaintext secrets in the tree. Manufacturer code and company ID are placeholders until allocated. |
 | NFR-Q1 | CI shall run unit tests, coverage, and static analysis on every push and pull request. |
@@ -255,7 +255,7 @@ Rules:
 
 ```
 src/
-  app/          startup, state, config, wire types, board identity
+  app/          startup, state, config, alarms, wire types, board identity
   sensors/      sensor_manager + one board backend (holyiot | tag)
   motion/       state machine, classifier, shock detector
   storage/      flash_manager, event_log, sensor_log, config_storage, migrate
@@ -744,6 +744,10 @@ to debug over RTT.
 | UT-N1 | config_migrate | v3 40-byte blob loads; schema 1 round-trip | FR-L4 |
 | UT-N2 | config_migrate | stats v0 → `boot_epoch_utc` 0; framed keeps epoch | FR-B8, FR-L4 |
 | UT-N3 | smart_tag.h | protocol v4 packed sizes; gas floor 70 %; epoch math | FR-B7, PROTO-4 |
+| UT-A1 | app_alarms | temp/humidity latch once and clear in-window; battery 100 mV hysteresis | FR-A2 |
+| UT-A2 | app_alarms | gas floor fires; threshold 0 disables; extra gyro bit is not a fault | FR-A3 |
+| UT-M3 | motion_manager | active → START; quiet for `motion_timeout_s` → STOP | FR-M1 |
+| UT-M5 | motion_manager | settled ≥ 5 min + shock + reorient → tamper; missing a condition does not | FR-M5 |
 
 ### 13.3 Hardware validation (on-target)
 
@@ -825,6 +829,6 @@ Do not pass `-DCONF_FILE=prj.conf` for a product build: Zephyr then skips
 3. **native_sim.** Valuable after the host Unity suite is in CI; not a
    V1 gate.
 4. **Coverage threshold.** 80 % line on `motion_classifier`,
-   `shock_detector`, `zigbee_reporting`, `app_config` validation,
-   `flash_manager`, and `config_migrate`. Drivers and BLE/Zigbee stacks
-   are excluded.
+   `shock_detector`, `motion_manager`, `zigbee_reporting`, `app_config`
+   validation, `app_alarms`, `flash_manager`, and `config_migrate`.
+   Drivers and BLE/Zigbee stacks are excluded.
