@@ -1,11 +1,7 @@
-#include <zephyr/kernel.h>
-#include <zephyr/logging/log.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "zigbee_reporting.h"
-
-LOG_MODULE_REGISTER(zigbee_reporting, LOG_LEVEL_INF);
 
 /* Battery moves slowly; one percentage point is worth a report. */
 #define BATTERY_DELTA_PERCENT 1

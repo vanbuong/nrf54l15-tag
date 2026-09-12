@@ -47,11 +47,11 @@ void zigbee_manager_factory_reset(void)
 #include "zigbee_reporting.h"
 #include "zigbee_tag_cluster.h"
 #include "zigbee_ota.h"
-#include "../app/app_state.h"
-#include "../app/app_config.h"
-#include "../storage/event_log.h"
-#include "../ui/led_manager.h"
-#include "../power/power_manager.h"
+#include "app/app_state.h"
+#include "app/app_config.h"
+#include "storage/event_log.h"
+#include "ui/led_manager.h"
+#include "power/power_manager.h"
 
 /*
  * Sleepy end device polling. The tag wakes on its own sampling interval, so

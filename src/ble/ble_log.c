@@ -5,8 +5,8 @@
 
 #include "ble_log.h"
 #include "ble_gatt.h"
-#include "../storage/event_log.h"
-#include "../storage/sensor_log.h"
+#include "storage/event_log.h"
+#include "storage/sensor_log.h"
 
 LOG_MODULE_REGISTER(ble_log, LOG_LEVEL_INF);
 

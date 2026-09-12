@@ -29,7 +29,7 @@
 #ifndef POWER_MANAGER_H
 #define POWER_MANAGER_H
 
-#include "../app/smart_tag.h"
+#include "app/smart_tag.h"
 
 int power_manager_init(void);
 

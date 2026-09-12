@@ -53,3 +53,7 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# Host unit tests / coverage
+tests/unit/build/
+coverage/

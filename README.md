@@ -1,7 +1,8 @@
 # nRF54L15 Smart Tag
 
-Starter firmware project for the HOLyiot nRF54L15 Smart Tag V1.0, also
-supported on Nordic's nRF54L15 Tag (PCA20072).
+Starter firmware for two nRF54L15 boards that share an application and a
+protocol, but no sensors. Design of record: [`doc/DESIGN.md`](doc/DESIGN.md).
+Review of the original sketch: [`doc/DESIGN_REVIEW.md`](doc/DESIGN_REVIEW.md).
 
 ## Supported boards
 
@@ -11,9 +12,9 @@ supported on Nordic's nRF54L15 Tag (PCA20072).
 | `nrf54l15tag/nrf54l15/cpuapp` | BME688, ADXL367, BMI270 | internal RRAM | yes - ADXL367 INT1 |
 
 The two boards share no sensors at all. Everything above the sensor layer is
-common; the differences are confined to the board overlay, `boards/<board>.conf`,
-private `#if` blocks in `sensor_manager.c`, and one file each of hardware
-validation tests.
+common. Board differences are confined to the overlay, `boards/<board>.conf`,
+one sensor backend (`src/sensors/sensor_holyiot.c` or
+`src/sensors/sensor_nrf54l15tag.c`), and one hardware-validation file.
 
 The nRF54L15 Tag board definition ships with Zephyr
 (`zephyr/boards/nordic/nrf54l15tag`), so only an application overlay is needed -
@@ -181,17 +182,22 @@ See "Sensors and battery" below.
 
 ## Application architecture
 
-Implements the module tree from `PLAN.md` section 3. Zigbee and BLE sit above a
-common application layer; neither owns the sensors.
+Implements the module tree from [`doc/DESIGN.md`](doc/DESIGN.md) section 5
+(originally `PLAN.md` section 3). Zigbee and BLE sit above a common
+application layer; neither owns the sensors.
 
     src/
       app/
         app_main.c         startup, button, state sequencing
         app_state.c/h      state machine, live status, fan-out to protocols
         app_config.c/h     configuration validation and effective values
-        smart_tag.h        shared wire types (PLAN.md sections 4 and 9)
+        smart_tag.h        shared wire types (host-testable)
+        board_id.h         per-board model string (device tree)
       sensors/
-        sensor_manager.c/h one sensor_data_t out of three drivers plus battery
+        sensor_manager.c/h public API, battery, magnitude
+        sensor_board.h     board backend interface
+        sensor_holyiot.c   SHT40 / LPS22HB / LIS2DH12
+        sensor_nrf54l15tag.c BME688 / ADXL367 / BMI270
       motion/
         motion_manager.c/h STATIONARY <-> MOVING state machine, tamper
         motion_classifier.c/h  magnitude, activity, orientation
@@ -537,34 +543,57 @@ the Nordic DK:
 None of the Smart Tag peripherals are fitted on the DK, so that build only
 exercises the firmware structure, BLE, and the build itself.
 
+## Host tests and CI
+
+Policy modules (motion classifier, shock detector, Zigbee reporting, config
+validation, flash logger, wire types) are unit-tested on the host with the
+Unity framework. No nRF Connect SDK is required:
+
+    make -C tests/unit test
+    make -C tests/unit coverage
+    make -C tests/unit cppcheck
+
+See [`tests/README.md`](tests/README.md). GitHub Actions runs the same three
+commands on every push and pull request (`.github/workflows/ci.yml`). A full
+`west build` of NCS is not in the PR gate.
+
 ## Suggested next steps
 
-Mapped onto the seven phases in `PLAN.md` section 13.
+Mapped onto the phases in [`doc/DESIGN.md`](doc/DESIGN.md) section 12.
+`PLAN.md` section 13 is the original single-board sketch.
+
+**Phase 0, host quality gate** - Unity tests, coverage, cppcheck. In tree.
 
 **Phase 1, hardware bring-up** - the validation firmware is written and ready
 to run; nothing has been on hardware yet. Build it with
 `-DCONF_FILE=prj_validation.conf` and work through HARDWARE_VALIDATION.md. It
 answers the chip-select, pressure-sensor-identity and flash-ID questions, and
-checks the battery reading, before any stack is layered on.
+checks the battery reading, before any stack is layered on. Run it on *both*
+boards.
 
 **Phase 2, BLE** - complete: on-demand advertising, GATT service,
 configuration, chunked log download.
 
-**Phase 3, flash logger** - complete. Still to verify on hardware: power-loss
-recovery (pull power mid-write and check the torn record is skipped) and wear
-behaviour over a full wrap of each partition.
+**Phase 3, flash logger** - complete in firmware; host tests cover CRC skip
+and wrap. Still to verify on hardware: power-loss recovery (pull power
+mid-write and check the torn record is skipped) and wear behaviour over a
+full wrap of each partition.
 
 **Phase 4, Zigbee** - written against the R23 add-on API but never compiled;
 the add-on is not in the workspace. Install it and build.
 
-**Phase 5, motion** - complete as polled detection. Decide whether to respin
-for interrupt-driven wake-up.
+**Phase 4b, multiprotocol** - MPSL dynamic switching. Not started.
+
+**Phase 5, motion** - complete as polled detection on Holyiot, activity-wake
+on the Tag. A Holyiot INT respin is a hardware project (DESIGN.md §3.3).
 
 **Phase 6, low power** - not started. Enable `CONFIG_PM` and
 `CONFIG_PM_DEVICE`, measure the sampling and radio duty cycles, and tune the
-defaults.
+defaults. Add a watchdog.
 
 **Phase 7, OTA and production** - `zigbee_ota.c` is wired to the FOTA library,
 but image signing, MCUboot/sysbuild partitioning, secure boot, factory
 provisioning and production test remain. Allocate a real Zigbee manufacturer
-code and Bluetooth SIG company ID before any of it ships.
+code and Bluetooth SIG company ID before any of it ships. Move
+`CONFIG_SMART_TAG_BLE_ADVERTISE_AT_BOOT` out of the production `prj.conf`.
+

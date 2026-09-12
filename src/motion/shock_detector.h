@@ -8,7 +8,7 @@
 #ifndef SHOCK_DETECTOR_H
 #define SHOCK_DETECTOR_H
 
-#include "../app/smart_tag.h"
+#include "app/smart_tag.h"
 
 struct shock_result {
 	bool shock;

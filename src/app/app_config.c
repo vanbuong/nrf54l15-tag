@@ -2,8 +2,10 @@
 #include <zephyr/logging/log.h>
 
 #include "app_config.h"
-#include "../storage/config_storage.h"
-#include "../motion/motion_manager.h"
+#include "storage/config_storage.h"
+#include "motion/motion_manager.h"
+#include "power/power_manager.h"
+#include "ui/led_manager.h"
 
 LOG_MODULE_REGISTER(app_config, LOG_LEVEL_INF);
 
@@ -76,6 +78,10 @@ bool app_config_validate(const tag_config_t *cfg)
 		return false;
 	}
 
+	if (cfg->led_enabled > 1U || cfg->sensor_history_enabled > 1U) {
+		return false;
+	}
+
 	return true;
 }
 
@@ -125,6 +131,8 @@ int app_config_set(const tag_config_t *in)
 	k_mutex_unlock(&lock);
 
 	motion_manager_update_config(&applied);
+	led_manager_set_enabled(applied.led_enabled != 0U);
+	power_manager_config_changed();
 
 	return config_storage_save(&applied);
 }

@@ -18,7 +18,7 @@
 
 #include <zephyr/bluetooth/gatt.h>
 
-#include "../app/smart_tag.h"
+#include "app/smart_tag.h"
 
 typedef enum {
 	BLE_LOG_ID_EVENT = 0,

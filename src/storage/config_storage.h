@@ -12,7 +12,7 @@
 #ifndef CONFIG_STORAGE_H
 #define CONFIG_STORAGE_H
 
-#include "../app/smart_tag.h"
+#include "app/smart_tag.h"
 
 /*
  * Shared with app_main.c: settings_load() there must load only this

@@ -8,12 +8,12 @@
 #include "ble_config.h"
 #include "ble_gatt.h"
 #include "ble_log.h"
-#include "../app/app_config.h"
-#include "../app/app_state.h"
-#include "../storage/event_log.h"
-#include "../storage/sensor_log.h"
-#include "../ui/led_manager.h"
-#include "../power/power_manager.h"
+#include "app/app_config.h"
+#include "app/app_state.h"
+#include "storage/event_log.h"
+#include "storage/sensor_log.h"
+#include "ui/led_manager.h"
+#include "power/power_manager.h"
 
 LOG_MODULE_REGISTER(ble_config, LOG_LEVEL_INF);
 
@@ -83,9 +83,6 @@ static void command_work_fn(struct k_work *work)
 
 	case BLE_CMD_SET_MODE:
 		err = app_config_set_mode((tag_mode_t)cmd.argument);
-		if (err == 0) {
-			power_manager_config_changed();
-		}
 		break;
 
 	case BLE_CMD_START_CALIBRATION:
@@ -184,7 +181,6 @@ ssize_t ble_config_write(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 
 	(void)app_raise_event(EVENT_CONFIG_CHANGED, EVENT_SEVERITY_INFO,
 			      (int16_t)config.operating_mode);
-	power_manager_config_changed();
 
 	return len;
 }

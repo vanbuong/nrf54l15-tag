@@ -19,9 +19,9 @@
 #include "ble_gatt.h"
 #include "ble_config.h"
 #include "ble_log.h"
-#include "../app/app_state.h"
-#include "../app/app_config.h"
-#include "../ui/led_manager.h"
+#include "app/app_state.h"
+#include "app/app_config.h"
+#include "ui/led_manager.h"
 
 LOG_MODULE_REGISTER(ble_manager, LOG_LEVEL_INF);
 

@@ -12,7 +12,7 @@
 /**
  * Registers the Smart Tag endpoint, seeds cluster attributes, configures the
  * sleepy end device behaviour and starts the ZBOSS thread. Call after
- * sensor_hub_init() and settings_load().
+ * sensor_manager_init() and settings_load_subtree().
  */
 int zigbee_manager_init(void);
 

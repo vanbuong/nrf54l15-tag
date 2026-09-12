@@ -28,7 +28,7 @@
 #ifndef MOTION_MANAGER_H
 #define MOTION_MANAGER_H
 
-#include "../app/smart_tag.h"
+#include "app/smart_tag.h"
 
 /** Bits returned by motion_manager_process(). */
 #define MOTION_EVENT_START		BIT(0)

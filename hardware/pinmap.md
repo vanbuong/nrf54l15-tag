@@ -70,11 +70,12 @@ assignment, and the SHT40 I2C address above - all originally transcribed
 wrong from the schematic/datasheet). Treat it as a starting point to check
 against the schematic and real hardware, not as the final authority.
 
-Only SPIM00 is unusable as a hardware peripheral on this board: P2.01 (its
-SCK) is not clock-capable for it per the nRF54L15 datasheet's pin assignment
-table, confirmed on hardware. The sensor SPI bus runs bit-banged over GPIO
-instead. SPIM21 and TWIM22 were also suspected of this at one point (P1.07
-and P1.09 read the same way in that table), but that was wrong - both work
-fine as real hardware peripherals once the flash `jedec-id` and SHT40
-address above were corrected. See the top-level README's "Bus topology"
-section and `boards/holyiot/holyiot_25025/README.md`.
+All three buses run as hardware peripherals. An earlier reading of the
+nRF54L15 pin-assignment table suggested P2.01 / P1.07 / P1.09 were not
+clock-capable; that was wrong. The failures were a wrong NOR `jedec-id`,
+a wrong SHT40 address, and a 10 MHz `spi-max-frequency` that SPIM00 cannot
+divide. At 8 MHz every instance initialises. See the top-level README's
+"Bus topology" section and `boards/holyiot/holyiot_25025/README.md`.
+
+LIS2DH12 INT1/INT2 on P2.00/P2.03 still cannot raise a GPIO interrupt:
+port P2 has no GPIOTE and no SENSE. Motion is polled on this board.

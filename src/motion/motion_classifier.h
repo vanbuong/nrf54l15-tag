@@ -8,7 +8,7 @@
 #ifndef MOTION_CLASSIFIER_H
 #define MOTION_CLASSIFIER_H
 
-#include "../app/smart_tag.h"
+#include "app/smart_tag.h"
 
 /**
  * Signed deviation of the vector magnitude from 1 g, in milli-g. Zero for a

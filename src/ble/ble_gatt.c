@@ -8,7 +8,7 @@
 #include "ble_gatt.h"
 #include "ble_config.h"
 #include "ble_log.h"
-#include "../app/app_state.h"
+#include "app/app_state.h"
 
 LOG_MODULE_REGISTER(ble_gatt, LOG_LEVEL_INF);
 
