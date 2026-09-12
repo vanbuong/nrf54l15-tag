@@ -14,6 +14,7 @@
 #include "storage/sensor_log.h"
 #include "ui/led_manager.h"
 #include "power/power_manager.h"
+#include "power/watchdog.h"
 
 LOG_MODULE_REGISTER(ble_config, LOG_LEVEL_INF);
 
@@ -54,6 +55,8 @@ static void command_work_fn(struct k_work *work)
 
 	ARG_UNUSED(work);
 
+	smart_tag_watchdog_feed();
+
 	switch (cmd.opcode) {
 	case BLE_CMD_IDENTIFY:
 		led_manager_identify(IDENTIFY_DURATION_S);
@@ -87,22 +90,27 @@ static void command_work_fn(struct k_work *work)
 
 	case BLE_CMD_START_CALIBRATION:
 		/*
-		 * Not implemented on either board, for slightly different
-		 * reasons. The HOLyiot board's SHT40 is factory calibrated and
-		 * the Zephyr lis2dh driver does not expose the accelerometer's
-		 * offset registers. On the nRF54L15 Tag the parts that would
-		 * benefit are the ADXL367, whose offset registers the driver
-		 * likewise does not expose, and the BME688's gas sensor, whose
-		 * useful "calibration" is a per-unit resistance baseline
-		 * captured after burn-in - which belongs in the gateway's
-		 * commissioning flow, written down through the Configuration
-		 * characteristic's gas_low_threshold_ohm, not in a firmware
-		 * command that has nowhere to store its result.
-		 *
-		 * Reported explicitly rather than silently ignored.
+		 * Offset-register calibration is not exposed by the Zephyr
+		 * accelerometer drivers on either board. Gas burn-in is
+		 * BLE_CMD_SNAPSHOT_GAS_BASELINE (0x0c).
 		 */
 		err = -ENOTSUP;
 		break;
+
+	case BLE_CMD_SET_TIME:
+		err = app_state_set_time_utc(cmd.argument);
+		break;
+
+	case BLE_CMD_SNAPSHOT_GAS_BASELINE: {
+		uint32_t floor = 0;
+
+		err = app_state_snapshot_gas_baseline(&floor);
+		if (err == 0) {
+			send_response(cmd.opcode, 0, &floor, sizeof(floor));
+			return;
+		}
+		break;
+	}
 
 	case BLE_CMD_FACTORY_RESET:
 		send_response(cmd.opcode, 0, NULL, 0);
@@ -125,6 +133,13 @@ static void command_work_fn(struct k_work *work)
 	if (cmd.opcode == BLE_CMD_RESET_COUNTERS && err == 0) {
 		app_state_get_statistics(&statistics);
 		send_response(cmd.opcode, 0, &statistics, sizeof(statistics));
+		return;
+	}
+
+	if (cmd.opcode == BLE_CMD_SET_TIME && err == 0) {
+		app_state_get_statistics(&statistics);
+		send_response(cmd.opcode, 0, &statistics.boot_epoch_utc,
+			      sizeof(statistics.boot_epoch_utc));
 		return;
 	}
 

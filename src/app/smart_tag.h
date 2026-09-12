@@ -35,8 +35,10 @@
  *     and a gyroscope (BMI270), sensor_log_record_t gained gas, and
  *     sensor_data_t became __packed - it was the one wire struct that was
  *     not, which left a compiler padding hole a decoder had to know about.
+ * v4: log-chunk header carries first_seq; tag_statistics_t gained
+ *     boot_epoch_utc (wall-clock = epoch + uptime, epoch 0 = unknown).
  */
-#define SMART_TAG_PROTOCOL_VERSION 3
+#define SMART_TAG_PROTOCOL_VERSION 4
 
 #define SMART_TAG_HW_VERSION	1
 
@@ -100,6 +102,7 @@ typedef enum {
 	EVENT_OTA_FINISHED,
 	EVENT_FACTORY_RESET,
 	EVENT_GAS_LOW,
+	EVENT_TIME_SET,
 } event_type_t;
 
 typedef enum {
@@ -253,7 +256,7 @@ typedef struct {
 	uint16_t zigbee_reports;
 	uint16_t ble_connections;
 	uint16_t sensor_faults;
-	uint16_t reserved;
+	uint32_t boot_epoch_utc;	/* UTC of boot; 0 = unknown */
 } __packed tag_statistics_t;
 
 typedef struct {
@@ -271,6 +274,22 @@ typedef struct {
 	uint8_t severity;		/* event_severity_t */
 	int16_t value;			/* type specific: shock mg, temp, ... */
 } __packed event_record_t;
+
+#define BLE_LOG_CHUNK_FLAG_LAST	BIT(0)
+
+/**
+ * Header on every BLE Log Data notification, followed by packed records.
+ * first_seq is the sequence number of payload[0] (protocol v4). An empty
+ * last chunk still reports the next sequence that would have been sent.
+ */
+struct ble_log_chunk_header {
+	uint16_t chunk_index;
+	uint8_t log_id;
+	uint8_t record_count;
+	uint8_t flags;
+	uint8_t record_size;
+	uint32_t first_seq;
+} __packed;
 
 /** Linear CR2032 map used on both boards (FR-S5). */
 static inline uint8_t smart_tag_battery_percent(int32_t millivolts)
@@ -307,5 +326,50 @@ static inline void smart_tag_fill_log_record(sensor_log_record_t *out,
 		out->flags |= SENSOR_FLAG_ALARM;
 	}
 }
+
+/*
+ * Gas alarm floor after a burn-in snapshot: 70 % of the captured clean-air
+ * resistance. The BME688 reading falls as VOC rises, so the threshold is a
+ * floor, not a ceiling. Zero baseline stays zero (alarm disabled).
+ */
+#define SMART_TAG_GAS_ALARM_PERCENT	70
+
+static inline uint32_t smart_tag_gas_alarm_floor(uint32_t baseline_ohm)
+{
+	return (baseline_ohm * SMART_TAG_GAS_ALARM_PERCENT) / 100U;
+}
+
+/**
+ * UTC seconds at boot, derived from a SET_TIME command. Zero means the
+ * phone/gateway has not set a clock, or the argument was in the past.
+ */
+static inline uint32_t smart_tag_boot_epoch_utc(uint32_t utc_now,
+						uint32_t uptime_s)
+{
+	if (utc_now == 0U || utc_now < uptime_s) {
+		return 0U;
+	}
+
+	return utc_now - uptime_s;
+}
+
+/** Wall-clock seconds, or 0 if the boot epoch is unknown. */
+static inline uint32_t smart_tag_utc_from_uptime(uint32_t boot_epoch_utc,
+						 uint32_t uptime_s)
+{
+	if (boot_epoch_utc == 0U) {
+		return 0U;
+	}
+
+	return boot_epoch_utc + uptime_s;
+}
+
+_Static_assert(sizeof(sensor_data_t) == 38, "sensor_data_t wire size");
+_Static_assert(sizeof(sensor_log_record_t) == 17, "sensor_log_record_t wire size");
+_Static_assert(sizeof(event_record_t) == 8, "event_record_t wire size");
+_Static_assert(sizeof(tag_config_t) == 40, "tag_config_t wire size");
+_Static_assert(sizeof(tag_statistics_t) == 42, "tag_statistics_t wire size");
+_Static_assert(sizeof(struct ble_log_chunk_header) == 10,
+	       "ble_log_chunk_header wire size");
 
 #endif /* SMART_TAG_H */

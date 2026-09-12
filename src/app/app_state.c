@@ -1,6 +1,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/reboot.h>
+#include <errno.h>
 #include <string.h>
 
 #include "app_state.h"
@@ -80,6 +81,20 @@ int app_state_init(void)
 
 void app_state_subscribe(struct app_subscriber *subscriber)
 {
+	if (subscriber == NULL) {
+		return;
+	}
+
+	/*
+	 * Protocol stacks register during INIT / ZIGBEE_START. After
+	 * RUNNING the subscriber list is frozen so a late BLE reconnect
+	 * cannot duplicate notifications.
+	 */
+	if (state >= APP_STATE_RUNNING) {
+		LOG_WRN("subscriber refused after RUNNING");
+		return;
+	}
+
 	k_mutex_lock(&lock, K_FOREVER);
 	sys_slist_append(&subscribers, &subscriber->node);
 	k_mutex_unlock(&lock);
@@ -384,6 +399,69 @@ void app_state_get_statistics(tag_statistics_t *out)
 	k_mutex_lock(&lock, K_FOREVER);
 	*out = statistics;
 	k_mutex_unlock(&lock);
+}
+
+int app_state_set_time_utc(uint32_t utc_now)
+{
+	uint32_t uptime_s = (uint32_t)(k_uptime_get() / 1000);
+	uint32_t epoch = smart_tag_boot_epoch_utc(utc_now, uptime_s);
+
+	if (epoch == 0U) {
+		return -EINVAL;
+	}
+
+	k_mutex_lock(&lock, K_FOREVER);
+	statistics.boot_epoch_utc = epoch;
+	k_mutex_unlock(&lock);
+
+	app_state_flush_statistics();
+
+	LOG_INF("boot epoch UTC %u (now %u, uptime %u s)", epoch, utc_now,
+		uptime_s);
+
+	(void)app_raise_event(EVENT_TIME_SET, EVENT_SEVERITY_INFO, 0);
+
+	return 0;
+}
+
+int app_state_snapshot_gas_baseline(uint32_t *threshold_ohm)
+{
+	sensor_data_t sample;
+	tag_config_t config;
+	uint32_t floor;
+	int err;
+
+	app_state_get_last_sample(&sample);
+
+	if ((sample.valid & SENSOR_VALID_GAS) == 0U ||
+	    sample.gas_resistance_ohm == 0U) {
+		return -ENOTSUP;
+	}
+
+	floor = smart_tag_gas_alarm_floor(sample.gas_resistance_ohm);
+	if (floor == 0U) {
+		floor = 1U;
+	}
+
+	app_config_get(&config);
+	config.gas_low_threshold_ohm = floor;
+
+	err = app_config_set(&config);
+	if (err) {
+		return err;
+	}
+
+	if (threshold_ohm != NULL) {
+		*threshold_ohm = floor;
+	}
+
+	LOG_INF("gas alarm floor %u ohm (baseline %u)", floor,
+		sample.gas_resistance_ohm);
+
+	(void)app_raise_event(EVENT_CONFIG_CHANGED, EVENT_SEVERITY_INFO,
+			      (int16_t)config.operating_mode);
+
+	return 0;
 }
 
 void app_state_flush_statistics(void)

@@ -23,6 +23,8 @@ typedef enum {
 	BLE_CMD_CLEAR_ALARMS = 0x08,
 	BLE_CMD_REBOOT = 0x09,
 	BLE_CMD_START_CALIBRATION = 0x0a,
+	BLE_CMD_SET_TIME = 0x0b,
+	BLE_CMD_SNAPSHOT_GAS_BASELINE = 0x0c,
 } ble_cmd_t;
 
 struct ble_cmd_request {

@@ -52,16 +52,7 @@ struct ble_log_info {
 	uint8_t reserved;
 } __packed;
 
-#define BLE_LOG_CHUNK_FLAG_LAST	BIT(0)
-
-/** Header on every Log Data notification, followed by packed records. */
-struct ble_log_chunk_header {
-	uint16_t chunk_index;
-	uint8_t log_id;
-	uint8_t record_count;
-	uint8_t flags;
-	uint8_t record_size;
-} __packed;
+/* Chunk header: struct ble_log_chunk_header in app/smart_tag.h (protocol v4). */
 
 int ble_log_init(void);
 

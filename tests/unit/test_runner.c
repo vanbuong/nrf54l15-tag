@@ -59,6 +59,18 @@ void test_battery_percent_empty(void);
 void test_battery_percent_mid(void);
 void test_sensor_data_packed_size(void);
 void test_log_record_from_sample(void);
+void test_gas_alarm_floor(void);
+void test_boot_epoch_helpers(void);
+
+void test_config_roundtrip(void);
+void test_config_v0_blob_loads(void);
+void test_config_short_schema_body_keeps_new_defaults(void);
+void test_config_rejects_unknown_schema(void);
+void test_config_rejects_truncated_header(void);
+void test_stats_v0_sets_epoch_zero(void);
+void test_stats_roundtrip_keeps_epoch(void);
+void test_encode_rejects_undersized_buffer(void);
+void test_stats_rejects_bad_framed_blobs(void);
 
 int main(void)
 {
@@ -115,6 +127,18 @@ int main(void)
 	RUN_TEST(test_battery_percent_mid);
 	RUN_TEST(test_sensor_data_packed_size);
 	RUN_TEST(test_log_record_from_sample);
+	RUN_TEST(test_gas_alarm_floor);
+	RUN_TEST(test_boot_epoch_helpers);
+
+	RUN_TEST(test_config_roundtrip);
+	RUN_TEST(test_config_v0_blob_loads);
+	RUN_TEST(test_config_short_schema_body_keeps_new_defaults);
+	RUN_TEST(test_config_rejects_unknown_schema);
+	RUN_TEST(test_config_rejects_truncated_header);
+	RUN_TEST(test_stats_v0_sets_epoch_zero);
+	RUN_TEST(test_stats_roundtrip_keeps_epoch);
+	RUN_TEST(test_encode_rejects_undersized_buffer);
+	RUN_TEST(test_stats_rejects_bad_framed_blobs);
 
 	return UNITY_END();
 }

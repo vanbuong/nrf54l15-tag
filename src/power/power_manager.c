@@ -3,6 +3,7 @@
 #include <zephyr/logging/log.h>
 
 #include "power_manager.h"
+#include "watchdog.h"
 #include "app/app_state.h"
 #include "app/app_config.h"
 #include "sensors/sensor_manager.h"
@@ -139,6 +140,7 @@ static void sampling_thread_fn(void *a, void *b, void *c)
 
 		sensor_manager_read(&data);
 		app_process_sensor_data(&data);
+		smart_tag_watchdog_feed();
 
 		/*
 		 * k_sem_take with a timeout is the sleep. The idle thread puts

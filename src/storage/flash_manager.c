@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "flash_manager.h"
+#include "power/watchdog.h"
 
 LOG_MODULE_REGISTER(flash_manager, LOG_LEVEL_INF);
 
@@ -329,7 +330,9 @@ void flash_log_get_info(struct flash_log *log, struct flash_log_info *info)
 
 int flash_log_erase(struct flash_log *log)
 {
-	int err;
+	size_t offset = 0;
+	size_t total;
+	int err = 0;
 
 	if (!log->ready) {
 		return -ENODEV;
@@ -337,8 +340,24 @@ int flash_log_erase(struct flash_log *log)
 
 	k_mutex_lock(&log->lock, K_FOREVER);
 
-	err = flash_area_erase(log->area, 0,
-			       (size_t)log->total_slots * FLASH_LOG_SLOT_SIZE);
+	/*
+	 * Sector by sector so the watchdog can be fed. A single
+	 * flash_area_erase of a 2 MB NOR partition can sit in the driver
+	 * longer than the CPU-time WDT window.
+	 */
+	total = (size_t)log->total_slots * FLASH_LOG_SLOT_SIZE;
+	while (offset < total) {
+		size_t chunk = MIN(log->sector_size, total - offset);
+
+		err = flash_area_erase(log->area, (off_t)offset, chunk);
+		if (err) {
+			break;
+		}
+
+		offset += chunk;
+		smart_tag_watchdog_feed();
+	}
+
 	if (err == 0) {
 		log->head_slot = 0;
 		log->tail_slot = 0;

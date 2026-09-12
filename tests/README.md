@@ -13,7 +13,8 @@ debug over RTT (DESIGN.md §13).
 | Zigbee reporting | `src/zigbee/zigbee_reporting.c` | deltas, heartbeat, gas |
 | config validation | `src/app/app_config.c` | ranges, mode interval |
 | flash logger | `src/storage/flash_manager.c` | CRC, wrap, torn write (RAM mock) |
-| wire types | `src/app/smart_tag.h` | packing, battery map, log record |
+| config migrate | `src/storage/config_migrate.c` | v3 blobs, schema 1 header |
+| wire types | `src/app/smart_tag.h` | packing, battery map, log record, epoch |
 
 Framework: [Unity](https://github.com/ThrowTheSwitch/Unity) v2.6.1, vendored
 under `tests/unit/unity/` (MIT).
@@ -30,7 +31,7 @@ make -C tests/unit clean
 ```
 
 Coverage HTML lands in `coverage/index.html`. The 80 % line-coverage
-floor applies to the five policy sources above, not to Zephyr drivers or
+floor applies to the six policy sources above, not to Zephyr drivers or
 the BLE/Zigbee stacks.
 
 ## How the stubs work

@@ -58,9 +58,31 @@ config SMART_TAG_BLE_ADVERTISE_AT_BOOT
 	  other service window, and a button press still extends or reopens
 	  it as normal.
 
-	  For bring-up/verification only - leave this off for production
-	  builds, where advertising should stay off the battery budget until
-	  asked for.
+	  Production prj.conf leaves this off. Enable it with
+	  -DEXTRA_CONF_FILE=prj_debug.conf for bring-up.
+
+config SMART_TAG_HAS_GAS
+	bool
+	default y
+	depends on DT_HAS_BOSCH_BME680_ENABLED
+	help
+	  Board has a gas sensor (BME688 on the nRF54L15 Tag). Compile-time
+	  capability; runtime validity is still SENSOR_VALID_GAS.
+
+config SMART_TAG_HAS_6AXIS_IMU
+	bool
+	default y
+	depends on DT_HAS_BOSCH_BMI270_ENABLED
+	help
+	  Board has a 6-axis IMU (BMI270). Read only while moving.
+
+config SMART_TAG_HAS_MOTION_WAKE
+	bool
+	default y
+	depends on DT_HAS_ADI_ADXL367_ENABLED
+	help
+	  Board can wake the sampling thread from an accelerometer interrupt
+	  (ADXL367 INT1 on P0). Holyiot LIS2DH INT lands on P2 and cannot.
 
 endmenu
 

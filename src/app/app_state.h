@@ -63,6 +63,19 @@ void app_state_get_last_sample(sensor_data_t *data);
 
 void app_state_get_statistics(tag_statistics_t *stats);
 
+/**
+ * Stores UTC-at-boot so log timestamps (uptime seconds) can be converted
+ * to wall-clock. @p utc_now is current UTC seconds; 0 is rejected.
+ */
+int app_state_set_time_utc(uint32_t utc_now);
+
+/**
+ * Captures the last valid gas reading as a 70 % alarm floor and persists
+ * it as gas_low_threshold_ohm. Returns -ENOTSUP if this board/sample has
+ * no gas. Writes the applied floor through @p threshold_ohm when non-NULL.
+ */
+int app_state_snapshot_gas_baseline(uint32_t *threshold_ohm);
+
 /** Persists the running statistics; called periodically and before reboot. */
 void app_state_flush_statistics(void);
 
