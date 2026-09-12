@@ -3,10 +3,10 @@
 #include <zephyr/logging/log.h>
 
 #include "power_manager.h"
-#include "../app/app_state.h"
-#include "../app/app_config.h"
-#include "../sensors/sensor_manager.h"
-#include "../ble/ble_manager.h"
+#include "app/app_state.h"
+#include "app/app_config.h"
+#include "sensors/sensor_manager.h"
+#include "ble/ble_manager.h"
 
 LOG_MODULE_REGISTER(power_manager, LOG_LEVEL_INF);
 

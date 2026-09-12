@@ -12,7 +12,7 @@
 #ifndef ZIGBEE_REPORTING_H
 #define ZIGBEE_REPORTING_H
 
-#include "../app/smart_tag.h"
+#include "app/smart_tag.h"
 
 /** Which attribute groups a sample should push to the ZCL layer. */
 #define REPORT_TEMPERATURE	BIT(0)

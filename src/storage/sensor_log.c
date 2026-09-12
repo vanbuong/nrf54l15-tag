@@ -19,28 +19,9 @@ int sensor_log_init(void)
 
 int sensor_log_add(const sensor_data_t *data, bool alarm, uint32_t *seq)
 {
-	/*
-	 * flags is data->valid verbatim, so the SENSOR_VALID_* bit layout is
-	 * literally the on-flash flag layout. A reader can tell a zero
-	 * gas_resistance_ohm meaning "no gas sensor on this board" from one
-	 * meaning "the BME688 read zero" by testing SENSOR_VALID_GAS.
-	 */
-	sensor_log_record_t record = {
-		.timestamp = data->timestamp,
-		.temperature = data->temperature_c_x100,
-		.humidity = data->humidity_x100,
-		.pressure = data->pressure_pa,
-		.gas_resistance_ohm = data->gas_resistance_ohm,
-		.flags = data->valid,
-	};
+	sensor_log_record_t record;
 
-	if (data->motion) {
-		record.flags |= SENSOR_FLAG_MOVING;
-	}
-
-	if (alarm) {
-		record.flags |= SENSOR_FLAG_ALARM;
-	}
+	smart_tag_fill_log_record(&record, data, alarm);
 
 	return flash_log_append(&log_instance, &record, seq);
 }

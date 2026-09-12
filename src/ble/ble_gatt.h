@@ -29,7 +29,7 @@
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/bluetooth/gatt.h>
 
-#include "../app/smart_tag.h"
+#include "app/smart_tag.h"
 
 #define SMART_TAG_UUID(v)                                                      \
 	BT_UUID_128_ENCODE(0xf0d1a000 + (v), 0x9e4b, 0x4b7a, 0x9c2e,           \

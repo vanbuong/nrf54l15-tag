@@ -9,7 +9,7 @@
 #define EVENT_LOG_H
 
 #include "flash_manager.h"
-#include "../app/smart_tag.h"
+#include "app/smart_tag.h"
 
 int event_log_init(void);
 

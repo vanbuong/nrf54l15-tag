@@ -1,20 +1,32 @@
 /*
  * Smart Tag shared types.
  *
- * Implements the data model from PLAN.md sections 4 (sensor abstraction),
- * 9 (flash records) and 14 (product identity / operating modes).
- *
- * Every struct that crosses a boundary - a BLE GATT payload or a flash record
- * - is packed and little-endian so the layout is stable across firmware
- * versions and readable by a phone or PC tool.
+ * Wire structs and constants only. This header is deliberately free of
+ * Zephyr includes so the same types compile in host Unity tests
+ * (doc/DESIGN.md §10, NFR-M1). Board identity strings live in board_id.h
+ * and are included by firmware sources that need them.
  */
 #ifndef SMART_TAG_H
 #define SMART_TAG_H
 
-#include <zephyr/kernel.h>
-#include <zephyr/devicetree.h>
 #include <stdbool.h>
 #include <stdint.h>
+
+#ifndef BIT
+#define BIT(n) (1u << (n))
+#endif
+
+#ifndef __packed
+#define __packed __attribute__((packed))
+#endif
+
+#ifndef MIN
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#endif
+
+#ifndef MAX
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#endif
 
 /*
  * Bumped whenever a wire struct below changes shape.
@@ -26,22 +38,24 @@
  */
 #define SMART_TAG_PROTOCOL_VERSION 3
 
-/*
- * Identity is per-board. Both targets run the same protocol; only the
- * strings differ. Keyed off the BME688 alias because that is the one node
- * that only ever exists on the Tag.
- */
 #define SMART_TAG_HW_VERSION	1
 
-#if DT_NODE_EXISTS(DT_ALIAS(bme688))
-#define SMART_TAG_MODEL_NAME	"nRF54L15 Tag"
-#else
-#define SMART_TAG_MODEL_NAME	"HOLyiot 25025"
+#ifndef SMART_TAG_MODEL_NAME
+#define SMART_TAG_MODEL_NAME	"Smart Tag"
 #endif
 
+/* 1 g in the milli-g units used throughout the application. */
+#define SMART_TAG_ONE_G_MG		1000
+
+/* CR2032 under a light pulsed load. Linear map, not a chemistry model. */
+#define SMART_TAG_BATTERY_FULL_MV	3000
+#define SMART_TAG_BATTERY_EMPTY_MV	2000
+#define SMART_TAG_BATTERY_HYSTERESIS_MV	100
+
 /*
- * PLAN.md section 14: one product, one firmware, several roles. The mode
- * selects sampling emphasis and reporting policy, not a different build.
+ * PLAN.md section 14 / DESIGN.md section 2: one product, one firmware,
+ * several roles. The mode selects sampling emphasis and reporting policy,
+ * not a different build.
  */
 typedef enum {
 	TAG_MODE_ENVIRONMENT = 0,	/* slow climate logging, motion secondary */
@@ -64,7 +78,7 @@ typedef enum {
 	ORIENTATION_Z_DOWN,
 } orientation_t;
 
-/* Event types, stored in event_record_t.type. */
+/* Event types, stored in event_record_t.type. Append-only (PROTO-3). */
 typedef enum {
 	EVENT_BOOT = 0,
 	EVENT_MOTION_START,
@@ -85,10 +99,6 @@ typedef enum {
 	EVENT_OTA_STARTED,
 	EVENT_OTA_FINISHED,
 	EVENT_FACTORY_RESET,
-	/*
-	 * Protocol v3, appended so every value above keeps its number and an
-	 * older decoder still reads existing logs correctly.
-	 */
 	EVENT_GAS_LOW,
 } event_type_t;
 
@@ -107,10 +117,6 @@ typedef enum {
 #define ALARM_TAMPER		BIT(5)
 #define ALARM_SENSOR_FAULT	BIT(6)
 #define ALARM_BATTERY_LOW	BIT(7)
-/*
- * Protocol v3. alarm_flags is 16 bits, so bits 8-15 were free - unlike the
- * SENSOR_VALID_* byte, which this port filled.
- */
 #define ALARM_GAS_LOW		BIT(8)
 
 /*
@@ -125,17 +131,15 @@ typedef enum {
 #define SENSOR_VALID_PRESSURE	BIT(1)
 #define SENSOR_VALID_ACCEL	BIT(2)
 #define SENSOR_VALID_BATTERY	BIT(3)
-/* Protocol v3, nRF54L15 Tag only: BME688 gas and BMI270 gyroscope. */
 #define SENSOR_VALID_GAS	BIT(4)
 #define SENSOR_VALID_GYRO	BIT(5)
-/* Extra flag bits carried in the log record only. */
 #define SENSOR_FLAG_MOVING	BIT(6)
 #define SENSOR_FLAG_ALARM	BIT(7)
 
 /**
- * The common sensor structure from PLAN.md section 4, extended with the
- * battery fields that section 2 lists as a V1 requirement and a timestamp so
- * a reading can be logged without a second lookup.
+ * The common sensor structure, extended with battery (V1 requirement),
+ * gas/gyro (protocol v3) and a timestamp so a reading can be logged without
+ * a second lookup.
  */
 typedef struct {
 	uint32_t timestamp;		/* seconds since boot */
@@ -159,12 +163,8 @@ typedef struct {
 	uint8_t orientation;
 	uint8_t valid;			/* SENSOR_VALID_* */
 
-	/*
-	 * Protocol v3. Both are nRF54L15 Tag only; on a board without the
-	 * part they stay zero and the matching SENSOR_VALID_* bit stays clear.
-	 */
-	uint32_t gas_resistance_ohm;	/* BME688, ohms */
-	int16_t gyro_x_dps_x10;		/* BMI270, 0.1 deg/s */
+	uint32_t gas_resistance_ohm;	/* BME688, ohms; 0 if not fitted */
+	int16_t gyro_x_dps_x10;		/* BMI270, 0.1 deg/s; live only */
 	int16_t gyro_y_dps_x10;
 	int16_t gyro_z_dps_x10;
 } __packed sensor_data_t;
@@ -186,8 +186,7 @@ typedef struct {
 
 /**
  * Persistent configuration. Written verbatim by the BLE Configuration
- * characteristics; thresholds from PLAN.md section 8, reporting deltas from
- * section 6, the BLE service window from section 11.
+ * characteristic.
  */
 typedef struct {
 	uint16_t sampling_interval_s;
@@ -201,20 +200,13 @@ typedef struct {
 	uint16_t humidity_high_x100;
 	uint16_t battery_low_mv;
 
-	/* PLAN.md section 6: report on change, or when max interval expires. */
 	uint16_t report_temp_delta_c_x100;
 	uint16_t report_humidity_delta_x100;
 	uint16_t report_pressure_delta_pa;
 	uint16_t report_max_interval_s;
 
-	/* PLAN.md section 11: BLE is off until asked for, then times out. */
 	uint16_t ble_service_window_s;
 
-	/*
-	 * Protocol v3, BME688 only. Gas resistance falls as VOC concentration
-	 * rises, so the alarm fires on a LOW reading, the opposite sense to
-	 * the temperature and humidity ceilings above. Zero disables it.
-	 */
 	uint32_t gas_low_threshold_ohm;
 	uint32_t report_gas_delta_ohm;
 
@@ -224,17 +216,6 @@ typedef struct {
 	uint8_t reserved;
 } __packed tag_config_t;
 
-/*
- * shock_threshold_mg is 4000, not the 2000 it was before the Tag port. On the
- * HOLyiot board the LIS2DH12 was fixed at +/-2 g, so a 2000 mg threshold sat
- * exactly at full scale and any real impact clipped against it. The ADXL367
- * reaches +/-8 g and the BMI270 +/-16 g, so the default can sit where a
- * genuine shock is rather than at the sensor's ceiling.
- *
- * gas_low_threshold_ohm defaults to 0 (disabled): a useful BME688 gas alarm
- * needs a per-unit baseline captured after the sensor burns in, not a
- * constant, so the threshold is left for the operator to set over BLE.
- */
 #define TAG_CONFIG_DEFAULTS {				\
 	.sampling_interval_s = 60,			\
 	.motion_timeout_s = 30,				\
@@ -246,7 +227,7 @@ typedef struct {
 	.humidity_high_x100 = 8000,			\
 	.battery_low_mv = 2400,				\
 	.report_temp_delta_c_x100 = 50,			\
-	.report_humidity_delta_x100 = 300,		\
+	.report_humidity_delta_x100 = 300,			\
 	.report_pressure_delta_pa = 100,		\
 	.report_max_interval_s = 1800,			\
 	.ble_service_window_s = 120,			\
@@ -258,7 +239,7 @@ typedef struct {
 	.reserved = 0,					\
 }
 
-/** Lifetime device statistics, per PLAN.md section 2 ("Device statistics"). */
+/** Lifetime device statistics. */
 typedef struct {
 	uint32_t boot_count;
 	uint32_t total_uptime_s;
@@ -275,17 +256,6 @@ typedef struct {
 	uint16_t reserved;
 } __packed tag_statistics_t;
 
-/* ---------------------------------------------------------------------------
- * Flash record layouts, PLAN.md section 9
- * ------------------------------------------------------------------------ */
-
-/*
- * 17 bytes, against the 28 that fit a flash_manager slot (FLASH_LOG_SLOT_SIZE
- * 32 minus the 4-byte header). The gyroscope is deliberately NOT logged: it
- * is meaningful only while the tag is moving, changes far faster than the
- * sampling interval, and would roughly double the record for data nothing
- * reads back. It stays live-only, on the Sensor Data characteristic.
- */
 typedef struct {
 	uint32_t timestamp;
 	int16_t temperature;		/* 0.01 degrees C */
@@ -301,5 +271,41 @@ typedef struct {
 	uint8_t severity;		/* event_severity_t */
 	int16_t value;			/* type specific: shock mg, temp, ... */
 } __packed event_record_t;
+
+/** Linear CR2032 map used on both boards (FR-S5). */
+static inline uint8_t smart_tag_battery_percent(int32_t millivolts)
+{
+	if (millivolts >= SMART_TAG_BATTERY_FULL_MV) {
+		return 100U;
+	}
+
+	if (millivolts <= SMART_TAG_BATTERY_EMPTY_MV) {
+		return 0U;
+	}
+
+	return (uint8_t)(((millivolts - SMART_TAG_BATTERY_EMPTY_MV) * 100) /
+			 (SMART_TAG_BATTERY_FULL_MV - SMART_TAG_BATTERY_EMPTY_MV));
+}
+
+/** Builds the flash record that sensor_log_add() appends. */
+static inline void smart_tag_fill_log_record(sensor_log_record_t *out,
+					     const sensor_data_t *data,
+					     bool alarm)
+{
+	out->timestamp = data->timestamp;
+	out->temperature = data->temperature_c_x100;
+	out->humidity = data->humidity_x100;
+	out->pressure = data->pressure_pa;
+	out->gas_resistance_ohm = data->gas_resistance_ohm;
+	out->flags = data->valid;
+
+	if (data->motion) {
+		out->flags |= SENSOR_FLAG_MOVING;
+	}
+
+	if (alarm) {
+		out->flags |= SENSOR_FLAG_ALARM;
+	}
+}
 
 #endif /* SMART_TAG_H */

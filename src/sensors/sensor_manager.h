@@ -10,10 +10,9 @@
  * with no owner. This module is the thin wrapper the plan asks for; the
  * driver bindings live in the board device tree.
  *
- * It supports both board targets, which share no sensors at all. Everything
- * is selected by devicetree alias, so the two sets differ only in this
- * module's private #if blocks - nothing above it knows which parts are
- * fitted:
+ * Board differences live in sensor_holyiot.c / sensor_nrf54l15tag.c, which
+ * implement the sensor_board_* API. CMake compiles exactly one of them.
+ * Nothing above this module knows which parts are fitted:
  *
  *   nRF54L15 Tag   BME688 (T/RH/pressure/gas), ADXL367, BMI270
  *   HOLyiot 25025  SHT40 (T/RH), LPS22HB (pressure), LIS2DH12
@@ -27,7 +26,7 @@
 
 #include <zephyr/device.h>
 
-#include "../app/smart_tag.h"
+#include "app/smart_tag.h"
 
 /** Binds the sensor, ADC and flash devices. Returns 0 when all are ready. */
 int sensor_manager_init(void);

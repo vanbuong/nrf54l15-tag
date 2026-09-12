@@ -5,12 +5,12 @@
 
 #include "app_state.h"
 #include "app_config.h"
-#include "../motion/motion_manager.h"
-#include "../sensors/sensor_manager.h"
-#include "../storage/event_log.h"
-#include "../storage/sensor_log.h"
-#include "../storage/config_storage.h"
-#include "../ui/led_manager.h"
+#include "motion/motion_manager.h"
+#include "sensors/sensor_manager.h"
+#include "storage/event_log.h"
+#include "storage/sensor_log.h"
+#include "storage/config_storage.h"
+#include "ui/led_manager.h"
 
 LOG_MODULE_REGISTER(app_state, LOG_LEVEL_INF);
 
@@ -227,6 +227,10 @@ static void check_thresholds(const sensor_data_t *data,
 					    EVENT_SEVERITY_WARNING,
 					    (int16_t)data->battery_mv);
 			}
+		} else if (data->battery_mv >=
+			   (uint16_t)(config->battery_low_mv +
+				      SMART_TAG_BATTERY_HYSTERESIS_MV)) {
+			status.alarm_flags &= (uint16_t)~ALARM_BATTERY_LOW;
 		}
 
 		if (statistics.min_battery_mv == 0U ||

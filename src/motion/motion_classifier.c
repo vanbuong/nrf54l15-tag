@@ -3,7 +3,7 @@
 #include "motion_classifier.h"
 
 /* 1 g in milli-g. */
-#define ONE_G_MG 1000
+#define ONE_G_MG SMART_TAG_ONE_G_MG
 
 /* An axis must hold at least half a g before it counts as "up" or "down". */
 #define ORIENTATION_MIN_MG (ONE_G_MG / 2)

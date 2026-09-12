@@ -11,7 +11,7 @@
 #ifndef ZIGBEE_CLUSTERS_H
 #define ZIGBEE_CLUSTERS_H
 
-#include "../app/smart_tag.h"
+#include "app/smart_tag.h"
 
 /** Seeds every cluster attribute with its power-on value. */
 void zigbee_clusters_init(const tag_config_t *config);

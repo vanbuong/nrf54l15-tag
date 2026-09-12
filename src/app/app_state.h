@@ -12,6 +12,8 @@
 #ifndef APP_STATE_H
 #define APP_STATE_H
 
+#include <zephyr/kernel.h>
+
 #include "smart_tag.h"
 
 typedef enum {

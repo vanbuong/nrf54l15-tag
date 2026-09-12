@@ -12,8 +12,8 @@ LOG_MODULE_REGISTER(zigbee_ota, LOG_LEVEL_INF);
 #include <zephyr/dfu/mcuboot.h>
 #include <zephyr/sys/reboot.h>
 
-#include "../app/app_state.h"
-#include "../ui/led_manager.h"
+#include "app/app_state.h"
+#include "ui/led_manager.h"
 
 static bool in_progress;
 

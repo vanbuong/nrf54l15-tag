@@ -15,18 +15,19 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/settings/settings.h>
 
+#include "board_id.h"
 #include "smart_tag.h"
 #include "app_state.h"
 #include "app_config.h"
-#include "../sensors/sensor_manager.h"
-#include "../motion/motion_manager.h"
-#include "../storage/event_log.h"
-#include "../storage/sensor_log.h"
-#include "../storage/config_storage.h"
-#include "../ui/led_manager.h"
-#include "../power/power_manager.h"
-#include "../ble/ble_manager.h"
-#include "../zigbee/zigbee_manager.h"
+#include "sensors/sensor_manager.h"
+#include "motion/motion_manager.h"
+#include "storage/event_log.h"
+#include "storage/sensor_log.h"
+#include "storage/config_storage.h"
+#include "ui/led_manager.h"
+#include "power/power_manager.h"
+#include "ble/ble_manager.h"
+#include "zigbee/zigbee_manager.h"
 
 LOG_MODULE_REGISTER(smart_tag, LOG_LEVEL_INF);
 

@@ -9,7 +9,7 @@
 
 #include <zephyr/bluetooth/gatt.h>
 
-#include "../app/smart_tag.h"
+#include "app/smart_tag.h"
 
 /* Command opcodes, written to the Command characteristic. */
 typedef enum {
