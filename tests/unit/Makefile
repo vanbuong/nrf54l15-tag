@@ -31,6 +31,7 @@ POLICY_SRCS := \
 	$(ROOT)/src/motion/shock_detector.c \
 	$(ROOT)/src/zigbee/zigbee_reporting.c \
 	$(ROOT)/src/storage/flash_manager.c \
+	$(ROOT)/src/storage/config_migrate.c \
 	$(ROOT)/src/app/app_config.c
 
 STUB_SRCS := \
@@ -46,6 +47,7 @@ TEST_SRCS := \
 	$(CURDIR)/test_app_config.c \
 	$(CURDIR)/test_flash_manager.c \
 	$(CURDIR)/test_smart_tag.c \
+	$(CURDIR)/test_config_migrate.c \
 	$(CURDIR)/test_runner.c
 
 UNITY_SRCS := $(UNITY)/unity.c
@@ -76,19 +78,21 @@ test: all
 coverage: test
 	cd $(BUILD) && gcov -b -o . \
 		motion_classifier.c shock_detector.c zigbee_reporting.c \
-		flash_manager.c app_config.c >/dev/null
+		flash_manager.c app_config.c config_migrate.c >/dev/null
 	python3 $(CURDIR)/check_coverage.py --min 80 \
 		$(BUILD)/motion_classifier.c.gcov \
 		$(BUILD)/shock_detector.c.gcov \
 		$(BUILD)/zigbee_reporting.c.gcov \
 		$(BUILD)/flash_manager.c.gcov \
-		$(BUILD)/app_config.c.gcov
+		$(BUILD)/app_config.c.gcov \
+		$(BUILD)/config_migrate.c.gcov
 	@if command -v lcov >/dev/null 2>&1; then \
 		lcov --capture --directory $(BUILD) --output-file $(BUILD)/coverage.info \
 			--rc lcov_branch_coverage=1 --ignore-errors mismatch,gcov,source,unused; \
 		lcov --extract $(BUILD)/coverage.info \
 			'*/src/motion/*' '*/src/zigbee/zigbee_reporting.c' \
 			'*/src/storage/flash_manager.c' '*/src/app/app_config.c' \
+			'*/src/storage/config_migrate.c' \
 			--output-file $(BUILD)/coverage_filtered.info \
 			--ignore-errors unused,mismatch; \
 		genhtml $(BUILD)/coverage_filtered.info --output-directory $(ROOT)/coverage \
@@ -111,7 +115,9 @@ cppcheck:
 		$(ROOT)/src/app/smart_tag.h \
 		$(ROOT)/src/app/app_config.c \
 		$(ROOT)/src/storage/flash_manager.c \
-		$(ROOT)/src/storage/flash_manager.h
+		$(ROOT)/src/storage/flash_manager.h \
+		$(ROOT)/src/storage/config_migrate.c \
+		$(ROOT)/src/storage/config_migrate.h
 
 clean:
 	rm -rf $(BUILD) $(ROOT)/coverage

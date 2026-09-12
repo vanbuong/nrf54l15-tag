@@ -207,10 +207,12 @@ application layer; neither owns the sensors.
         event_log.c/h      event records
         sensor_log.c/h     sensor history records
         config_storage.c/h configuration and statistics persistence
+        config_migrate.c/h NVS schema header + v3 blob migrate
       ui/
         led_manager.c/h    priority-based RGB indications
       power/
         power_manager.c/h  sampling duty cycle, BLE service window
+        watchdog.c/h       pause-in-sleep SoC watchdog
       ble/
         ble_manager.c/h    stack and advertising lifecycle
         ble_gatt.c/h       service table and notifications
@@ -379,36 +381,36 @@ tools show it without knowing the product. The rest is one custom service,
 grouped one struct per heading here, because each extra characteristic is
 another ATT round trip and radio time is the dominant cost on a coin cell.
 
-### Protocol version 3
+### Protocol version 4
 
-`SMART_TAG_PROTOCOL_VERSION` is 3. A client written against v2 will misread
-every payload, so check the version byte in the advertising manufacturer data
-before decoding. What changed:
+`SMART_TAG_PROTOCOL_VERSION` is 4. A client written against v3 will
+misread the log-chunk header and the statistics characteristic, so check
+the version byte in the advertising manufacturer data before decoding.
+What changed from v3:
 
-- **`sensor_data_t` is now `__packed`.** It was the only wire struct that was
-  not, which left a compiler padding hole at offset 15 and three bytes of tail
-  padding that a decoder had to know about. Removing them changes every field
-  offset after `battery_percent`.
-- **Gas resistance** (`uint32_t`, ohms) added to `sensor_data_t` and
-  `sensor_log_record_t`, with a new `SENSOR_VALID_GAS` bit.
-- **Gyroscope** (three `int16_t`, 0.1 deg/s) added to `sensor_data_t`, with a
-  new `SENSOR_VALID_GYRO` bit. Live only - it is not logged.
-- **`tag_config_t`** gained `gas_low_threshold_ohm` and `report_gas_delta_ohm`,
-  consuming the spare `reserved` byte.
-- **`ALARM_GAS_LOW`** (bit 8) and **`EVENT_GAS_LOW`** added. The gas alarm is a
-  floor, not a ceiling: BME688 resistance falls as VOC concentration rises. It
-  defaults to disabled, because a useful threshold is a per-unit baseline
-  captured after burn-in, not a constant.
+- **Log Data chunk header** gained `uint32_t first_seq` (sequence of the
+  first record in the payload). Size is now 10 bytes.
+- **`tag_statistics_t`** replaced the trailing reserved `uint16` with
+  `boot_epoch_utc` (UTC seconds at boot; 0 = unknown). Size is now 42
+  bytes. Wall-clock of a log record is `boot_epoch_utc + timestamp`.
+- **Commands** 0x0B `SET_TIME` (argument = current UTC seconds) and 0x0C
+  `SNAPSHOT_GAS_BASELINE` (sets `gas_low_threshold_ohm` to 70 % of the
+  last valid gas reading).
+- **NVS** config/stats are stored with a `{schema, body_size}` header.
+  A raw 40-byte protocol-v3 blob still loads.
 
-Bits 4 and 5 were the last free ones in the `SENSOR_VALID_*` byte, which is
-shared with the flash record's flags - a further sensor needs a wider field.
+v3 still applies for the live sample:
 
-On the HOLyiot board the two new fields are always zero and their validity bits
-always clear, so one decoder handles both boards.
+- **`sensor_data_t` is `__packed`.**
+- **Gas resistance** and **gyroscope** fields and validity bits.
+- **`ALARM_GAS_LOW`** / **`EVENT_GAS_LOW`**.
 
-Log download is the chunked protocol the plan asks for: write a request to Log
-Control, receive numbered chunks on Log Data, with the last chunk flagged so a
-client can tell completion from a stall.
+On the HOLyiot board the gas/gyro fields are always zero and their
+validity bits always clear, so one decoder handles both boards.
+
+Log download is the chunked protocol: write a request to Log Control,
+receive numbered chunks on Log Data, with `first_seq` on each header and
+the last chunk flagged so a client can tell completion from a stall.
 
     Phone                        Tag
       |-- LogControl(START) ----->|
@@ -417,10 +419,15 @@ client can tell completion from a stall.
       |             ...           |
       |<--- LogData chunk N ------|  FLAG_LAST
 
-Commands: 0x01 Identify, 0x02 and 0x03 clear the event and sensor logs, 0x04
-reset counters, 0x05 factory reset, 0x06 sample now, 0x07 set mode, 0x08 clear
-alarms, 0x09 reboot, 0x0A start calibration (returns `-ENOTSUP`; there is
-nothing to calibrate on this revision).
+Commands: 0x01 Identify, 0x02 and 0x03 clear the event and sensor logs,
+0x04 reset counters, 0x05 factory reset, 0x06 sample now, 0x07 set mode,
+0x08 clear alarms, 0x09 reboot, 0x0A start calibration (`-ENOTSUP`),
+0x0B set time, 0x0C snapshot gas baseline.
+
+Production builds leave BLE off until a button press. For nRF Connect
+bring-up without the button:
+
+    west build -b holyiot_25025/nrf54l15/cpuapp -- -DEXTRA_CONF_FILE=prj_debug.conf
 
 ## Zigbee
 
@@ -546,8 +553,8 @@ exercises the firmware structure, BLE, and the build itself.
 ## Host tests and CI
 
 Policy modules (motion classifier, shock detector, Zigbee reporting, config
-validation, flash logger, wire types) are unit-tested on the host with the
-Unity framework. No nRF Connect SDK is required:
+validation, flash logger, config migrate, wire types) are unit-tested on the
+host with the Unity framework. No nRF Connect SDK is required:
 
     make -C tests/unit test
     make -C tests/unit coverage
@@ -587,13 +594,13 @@ the add-on is not in the workspace. Install it and build.
 **Phase 5, motion** - complete as polled detection on Holyiot, activity-wake
 on the Tag. A Holyiot INT respin is a hardware project (DESIGN.md §3.3).
 
-**Phase 6, low power** - not started. Enable `CONFIG_PM` and
-`CONFIG_PM_DEVICE`, measure the sampling and radio duty cycles, and tune the
-defaults. Add a watchdog.
+**Phase 6, low power** - watchdog is in (pause-in-sleep, 8 s CPU window).
+Enable `CONFIG_PM` and `CONFIG_PM_DEVICE`, measure the sampling and radio
+duty cycles, and tune the defaults.
 
 **Phase 7, OTA and production** - `zigbee_ota.c` is wired to the FOTA library,
 but image signing, MCUboot/sysbuild partitioning, secure boot, factory
 provisioning and production test remain. Allocate a real Zigbee manufacturer
-code and Bluetooth SIG company ID before any of it ships. Move
-`CONFIG_SMART_TAG_BLE_ADVERTISE_AT_BOOT` out of the production `prj.conf`.
+code and Bluetooth SIG company ID before any of it ships. Production
+`prj.conf` no longer advertises at boot; use `prj_debug.conf` for bring-up.
 

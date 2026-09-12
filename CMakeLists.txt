@@ -38,10 +38,12 @@ else()
       src/storage/event_log.c
       src/storage/sensor_log.c
       src/storage/config_storage.c
+      src/storage/config_migrate.c
 
       src/ui/led_manager.c
 
       src/power/power_manager.c
+      src/power/watchdog.c
 
       src/ble/ble_manager.c
       src/ble/ble_gatt.c

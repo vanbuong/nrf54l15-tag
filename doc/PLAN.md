@@ -4,7 +4,7 @@
 > [DESIGN_REVIEW.md](DESIGN_REVIEW.md).
 >
 > Do not treat the sensor list, flash map, or interrupt plan below as
-> authoritative — both boards, protocol v3, and the capability model
+> authoritative — both boards, protocol v4, and the capability model
 > live in DESIGN.md.
 
 1. Target architecture

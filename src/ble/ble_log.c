@@ -7,6 +7,7 @@
 #include "ble_gatt.h"
 #include "storage/event_log.h"
 #include "storage/sensor_log.h"
+#include "power/watchdog.h"
 
 LOG_MODULE_REGISTER(ble_log, LOG_LEVEL_INF);
 
@@ -61,6 +62,8 @@ static void stream_work_fn(struct k_work *work)
 
 	ARG_UNUSED(work);
 
+	smart_tag_watchdog_feed();
+
 	if (!stream.active) {
 		return;
 	}
@@ -80,6 +83,7 @@ static void stream_work_fn(struct k_work *work)
 	header->record_count = (uint8_t)MAX(got, 0);
 	header->record_size = size;
 	header->flags = 0;
+	header->first_seq = stream.next_seq;
 
 	if (got <= 0 || want == 0U) {
 		/* Nothing left: send an empty terminating chunk. */

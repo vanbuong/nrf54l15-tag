@@ -1,6 +1,6 @@
 # nRF54L15 Smart Tag — system design
 
-**Status:** design of record for firmware V1 (protocol v3), dual-hardware.
+**Status:** design of record for firmware V1.1 (protocol v4), dual-hardware.
 **Supersedes:** [PLAN.md](PLAN.md) (original sketch).
 **Review of the original:** [DESIGN_REVIEW.md](DESIGN_REVIEW.md).
 **Bring-up procedure:** [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md).
@@ -142,6 +142,7 @@ IDs are stable. Tests in §13 reference them.
 | FR-A6 | Factory reset shall erase both logs, restore default config and statistics, leave the Zigbee network if built in, and reboot. |
 | FR-A7 | Protocol stacks shall register as subscribers. `app_state` shall not include BLE or Zigbee headers. |
 | FR-A8 | A configuration change shall update motion thresholds, LED enable and the sampling interval from one place. |
+| FR-A9 | `app_state_subscribe()` shall refuse registrations after `APP_STATE_RUNNING`. |
 
 ### 4.3 Functional — storage
 
@@ -150,7 +151,7 @@ IDs are stable. Tests in §13 reference them.
 | FR-L1 | Event log and sensor history shall be independent circular buffers so a shock burst cannot evict climate history. |
 | FR-L2 | Records shall be fixed-size, CRC-16 protected, with a magic. A torn write shall be skipped at next boot. |
 | FR-L3 | Configuration and statistics shall live in the internal settings partition, not the log flash. |
-| FR-L4 | Stored config whose size or schema does not match shall fall back to defaults rather than be reinterpreted. (V1.1: migrate; see §11.) |
+| FR-L4 | Stored config and statistics shall carry a schema header. Protocol-v3 40-byte blobs shall load; unknown schema or a corrupt header shall fall back to defaults rather than be reinterpreted. |
 | FR-L5 | Sequence numbers shall be contiguous and monotonic across wrap. |
 
 ### 4.4 Functional — BLE
@@ -161,16 +162,18 @@ IDs are stable. Tests in §13 reference them.
 | FR-B2 | The window shall last `ble_service_window_s` (default 120 s), restart on activity, and stay open while a connection is live. |
 | FR-B3 | Device Information shall use SIG service 0x180A. |
 | FR-B4 | Remaining data shall be one custom service `f0d1a000-9e4b-4b7a-9c2e-2a5b1d250250` with the characteristics in §7.2. |
-| FR-B5 | Log download shall be chunked (control write → numbered notify chunks, last flagged). |
+| FR-B5 | Log download shall be chunked (control write → numbered notify chunks with `first_seq`, last flagged). |
 | FR-B6 | Advertising manufacturer data shall carry protocol version, mode, motion/orientation, alarms, T, RH, battery so a shelf can be triaged without connecting. |
 | FR-B7 | `SMART_TAG_PROTOCOL_VERSION` shall bump when any wire struct changes shape. |
+| FR-B8 | BLE command `SET_TIME` (0x0B) shall store a boot epoch so uptime timestamps can be converted to UTC. Epoch 0 means unknown. |
+| FR-B9 | BLE command `SNAPSHOT_GAS_BASELINE` (0x0C) shall set `gas_low_threshold_ohm` to 70 % of the last valid gas reading, or return `-ENOTSUP`. |
 
 ### 4.5 Functional — Zigbee
 
 | ID | Requirement |
 |---|---|
 | FR-Z1 | The tag shall join as a sleepy end device on endpoint 1 with Basic, Identify, Power Configuration, Temperature, Humidity, Pressure, and manufacturer-specific Tag Monitor 0xFC00. |
-| FR-Z2 | Tag Monitor attributes 0x0000–0x000C shall match PLAN.md §5; 0x000D is gas resistance (protocol v3). |
+| FR-Z2 | Tag Monitor attributes 0x0000–0x000C shall match PLAN.md §5; 0x000D is gas resistance; 0x000E is boot epoch (writable UTC-now → epoch). |
 | FR-Z3 | Environmental attributes shall report on configured delta **or** max interval (default 30 min). Motion, shock, free fall, tamper, alarm flag changes shall report immediately. |
 | FR-Z4 | The default image shall build without the Zigbee add-on (`CONFIG_ZIGBEE_ADD_ON=n` → stub returning `-ENOTSUP`). |
 | FR-Z5 | OTA Upgrade shall live on the FOTA library endpoint, not endpoint 1. |
@@ -191,7 +194,8 @@ IDs are stable. Tests in §13 reference them.
 | NFR-P2 | BLE radio time is the dominant cost of a maintenance session; GATT groupings exist to minimise ATT round trips. |
 | NFR-R1 | A torn log write shall not prevent boot or subsequent appends. |
 | NFR-R2 | A missing sensor shall not prevent the rest of the firmware from running. |
-| NFR-M1 | Policy modules (classifier, shock, reporting, config validation, flash slot format) shall be unit-testable on the host with Unity. |
+| NFR-R3 | A watchdog shall count CPU time only (`PAUSE_IN_SLEEP`), fed from sampling, BLE work, and log erase. |
+| NFR-M1 | Policy modules (classifier, shock, reporting, config validation, flash slot format, config migrate) shall be unit-testable on the host with Unity. |
 | NFR-M2 | Board differences shall be confined to overlay, `boards/<board>.conf`, one sensor backend file, and one validation file. |
 | NFR-S1 | No plaintext secrets in the tree. Manufacturer code and company ID are placeholders until allocated. |
 | NFR-Q1 | CI shall run unit tests, coverage, and static analysis on every push and pull request. |
@@ -203,6 +207,7 @@ IDs are stable. Tests in §13 reference them.
 | PROTO-1 | Wire structs are packed little-endian. |
 | PROTO-2 | Protocol v3 decoder shall accept Holyiot samples with gas/gyro zero and validity clear. |
 | PROTO-3 | Event type numbers shall be append-only. |
+| PROTO-4 | Protocol v4 log chunks shall include `first_seq`; `tag_statistics_t` is 42 bytes with `boot_epoch_utc`. |
 
 ---
 
@@ -253,9 +258,9 @@ src/
   app/          startup, state, config, wire types, board identity
   sensors/      sensor_manager + one board backend (holyiot | tag)
   motion/       state machine, classifier, shock detector
-  storage/      flash_manager, event_log, sensor_log, config_storage
+  storage/      flash_manager, event_log, sensor_log, config_storage, migrate
   ui/           priority RGB
-  power/        sampling thread, BLE service window
+  power/        sampling thread, BLE service window, watchdog
   ble/          stack, GATT, commands, chunked logs
   zigbee/       stack, ZCL, reporting policy, OTA (stub without add-on)
   validation/   Phase 1 peripheral suite (separate image)
@@ -307,8 +312,11 @@ and a protocol bump.
 
 - `tag_status_t` — motion, orientation, mode, tamper, alarms, counters.
 - `tag_config_t` — intervals, thresholds, reporting deltas, BLE window,
-  gas floor, mode, LED and history enables.
-- `tag_statistics_t` — lifetime counters persisted hourly and on reboot.
+  gas floor, mode, LED and history enables. NVS schema 1 wraps this in a
+  `{schema, body_size}` header; a raw 40-byte v3 blob still loads.
+- `tag_statistics_t` — lifetime counters plus `boot_epoch_utc` (0 =
+  unknown). Persisted hourly and on reboot. Wall-clock of a log record is
+  `boot_epoch_utc + timestamp` when the epoch is set.
 
 ### 6.3 Flash records
 
@@ -357,12 +365,13 @@ UUID base `f0d1a000-9e4b-4b7a-9c2e-2a5b1d250250`.
 | Event | `a004` | R N | `event_record_t` |
 | Log Information | `a005` | R | `ble_log_info` |
 | Log Control | `a006` | W | `ble_log_request` |
-| Log Data | `a007` | N | chunk header + records |
+| Log Data | `a007` | N | chunk header (`first_seq`) + records |
 | Command | `a008` | W N | request / response |
 | Statistics | `a009` | R | `tag_statistics_t` |
 
 Commands: Identify, clear logs, reset counters, factory reset, sample now,
-set mode, clear alarms, reboot, start calibration (`-ENOTSUP` on V1).
+set mode, clear alarms, reboot, start calibration (`-ENOTSUP` on V1),
+`SET_TIME` (0x0B, argument = UTC now), `SNAPSHOT_GAS_BASELINE` (0x0C).
 
 ### 7.3 Zigbee clusters (endpoint 1)
 
@@ -381,7 +390,7 @@ OTA: FOTA library endpoint (default 10).
 Tag Monitor attributes: MotionState, Orientation, ShockCount,
 MaximumShock, FreeFallCount, TamperState, MovementDuration,
 LastMovementTime, EventCount, LogRecordCount, AlarmFlags, OperatingMode
-(W), SamplingInterval (W), GasResistance (v3).
+(W), SamplingInterval (W), GasResistance (v3), BootEpoch (v4, W = UTC now).
 
 Manufacturer code `0x127F` and BLE company ID `0xFFFF` are placeholders.
 
@@ -594,18 +603,18 @@ are deferred. This is not enabled in the default V1 image.
 
 ---
 
-## 11. Evolution (explicitly deferred)
+## 11. Evolution
 
-| Item | V1 behaviour | Next |
+| Item | Now | Later |
 |---|---|---|
-| Timebase | Uptime seconds | Boot epoch + BLE/Zigbee set-time |
-| Config schema | Size mismatch → defaults | `schema_version` + migrate |
-| Log seq on wire | Slot-only | Include seq in chunk or record |
+| Timebase | Boot epoch + BLE `SET_TIME` / Zigbee attr 0x000E | Factory provisioning of epoch |
+| Config schema | Schema 1 header + v3 blob migrate | Further fields copy onto defaults |
+| Log seq on wire | `first_seq` in chunk header (v4) | Per-record seq if a decoder needs it |
 | Holyiot wake | Polled | PCB: INT on P0/P1 |
 | Zigbee in default build | Stub | Add-on + MPSL |
 | PM | Off | Enable after measurement |
-| Gas baseline | Operator writes threshold | Snapshot command after burn-in |
-| Watchdog | Off | WDT in Phase 6 |
+| Gas baseline | `SNAPSHOT_GAS_BASELINE` (70 % of last reading) | Calibrated VOC |
+| Watchdog | 8 s CPU-time, pause-in-sleep | Tune window from traces |
 | Audit integrity | CRC-16 | Keyed MAC |
 
 ---
@@ -677,15 +686,15 @@ per impact; Tag wakes on pick-up without waiting the interval.
 ### Phase 6 — Low power
 
 Enable `CONFIG_PM` / `CONFIG_PM_DEVICE` after PPK-2 (or equivalent)
-traces of: stationary sample, shock, BLE window, Zigbee report. WDT on.
+traces of: stationary sample, shock, BLE window, Zigbee report.
 
 **Exit:** NFR-P1 number written down; no regression in Phase 2–5.
 
 ### Phase 7 — Production
 
 Real manufacturer code and company ID, MCUboot slots + signed images,
-Zigbee OTA, factory provisioning (serial, epoch), `prj_debug.conf`
-separated from production `prj.conf` (no advertise-at-boot).
+Zigbee OTA, factory provisioning (serial). Production `prj.conf` does
+not advertise at boot; `prj_debug.conf` is the bring-up overlay.
 
 **Exit:** a tagged build can be identified, updated, and reset to a
 known-good config without a debugger.
@@ -732,6 +741,9 @@ to debug over RTT.
 | UT-F3 | flash_manager | erase resets seq to 1 | FR-L2 |
 | UT-L1 | sensor log record | flags copy VALID_* plus MOVING/ALARM | FR-L1 |
 | UT-B1 | battery map | 3000→100, 2000→0, 2500→50, clamp | FR-S5 |
+| UT-N1 | config_migrate | v3 40-byte blob loads; schema 1 round-trip | FR-L4 |
+| UT-N2 | config_migrate | stats v0 → `boot_epoch_utc` 0; framed keeps epoch | FR-B8, FR-L4 |
+| UT-N3 | smart_tag.h | protocol v4 packed sizes; gas floor 70 %; epoch math | FR-B7, PROTO-4 |
 
 ### 13.3 Hardware validation (on-target)
 
@@ -757,10 +769,12 @@ See [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md). Mapped here:
 |---|---|---|---|
 | ST-B1 | Boot with advertise-at-boot off, no press | No BLE adv | FR-B1 |
 | ST-B2 | Short press | Adv starts, blue blink, window ends ~120 s | FR-B2, FR-U1 |
-| ST-B3 | Connect, read Sensor Data | Packed v3 struct, validity matches board | FR-B4, PROTO-2 |
+| ST-B3 | Connect, read Sensor Data | Packed v3 `sensor_data_t`, validity matches board | FR-B4, PROTO-2 |
 | ST-B4 | Write invalid config | ATT Value Not Allowed, config unchanged | FR-A4 |
-| ST-B5 | START event log, abort, START again | Chunks, FLAG_LAST, no stall | FR-B5 |
+| ST-B5 | START event log, abort, START again | Chunks carry `first_seq`, FLAG_LAST, no stall | FR-B5, PROTO-4 |
 | ST-B6 | 5 s hold | Logs empty, defaults, reboot | FR-A6 |
+| ST-B7 | SET_TIME with UTC now, read Statistics | `boot_epoch_utc` ≈ now − uptime | FR-B8 |
+| ST-B8 | SNAPSHOT_GAS_BASELINE after a valid gas sample | Config floor is 70 % of reading | FR-B9 |
 | ST-Z1 | Join network | Yellow then green; EVENT_ZIGBEE_JOINED | FR-Z1, FR-U1 |
 | ST-Z2 | Hold T steady 30 min | One heartbeat report | FR-Z3 |
 | ST-Z3 | Heat > 0.5 °C | Immediate temperature report | FR-Z3 |
@@ -793,7 +807,7 @@ with NCS is available.
 | Product | `west build -b <board>/nrf54l15/cpuapp` | Application + BLE; Zigbee stub |
 | Product + Zigbee | Uncomment west.yml + `CONFIG_ZIGBEE_*` | Sleepy ED |
 | Validation | `-DCONF_FILE=prj_validation.conf` | Phase 1 suite only |
-| Debug BLE | `CONFIG_SMART_TAG_BLE_ADVERTISE_AT_BOOT` | Window at boot |
+| Debug BLE | `-DEXTRA_CONF_FILE=prj_debug.conf` | Advertise-at-boot overlay |
 
 SDK: nRF Connect SDK v3.4.0 LTS (Zephyr 4.4). Zigbee add-on v1.3.0.
 
@@ -811,5 +825,6 @@ Do not pass `-DCONF_FILE=prj.conf` for a product build: Zephyr then skips
 3. **native_sim.** Valuable after the host Unity suite is in CI; not a
    V1 gate.
 4. **Coverage threshold.** 80 % line on `motion_classifier`,
-   `shock_detector`, `zigbee_reporting`, `app_config` validation and
-   `flash_manager`. Drivers and BLE/Zigbee stacks are excluded.
+   `shock_detector`, `zigbee_reporting`, `app_config` validation,
+   `flash_manager`, and `config_migrate`. Drivers and BLE/Zigbee stacks
+   are excluded.

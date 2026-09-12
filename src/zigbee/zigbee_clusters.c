@@ -16,6 +16,7 @@ LOG_MODULE_REGISTER(zigbee_clusters, LOG_LEVEL_INF);
 
 #include "zigbee_tag_cluster.h"
 #include "zigbee_reporting.h"
+#include "app/app_state.h"
 
 #define BASIC_APP_VERSION	1
 #define BASIC_STACK_VERSION	23
@@ -306,6 +307,14 @@ void zigbee_clusters_update(const sensor_data_t *data,
 		dev_ctx.tag.gas_resistance = data->gas_resistance_ohm;
 		set_tag_attr(TAG_ATTR_GAS_RESISTANCE,
 			     &dev_ctx.tag.gas_resistance);
+	}
+
+	{
+		tag_statistics_t statistics;
+
+		app_state_get_statistics(&statistics);
+		dev_ctx.tag.boot_epoch = statistics.boot_epoch_utc;
+		set_tag_attr(TAG_ATTR_BOOT_EPOCH, &dev_ctx.tag.boot_epoch);
 	}
 }
 

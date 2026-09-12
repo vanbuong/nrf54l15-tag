@@ -26,6 +26,7 @@
 #include "storage/config_storage.h"
 #include "ui/led_manager.h"
 #include "power/power_manager.h"
+#include "power/watchdog.h"
 #include "ble/ble_manager.h"
 #include "zigbee/zigbee_manager.h"
 
@@ -215,6 +216,7 @@ int main(void)
 	app_state_init();
 	motion_manager_init(&config);
 	power_manager_init();
+	(void)smart_tag_watchdog_init();
 
 	led_manager_set_enabled(config.led_enabled != 0U);
 

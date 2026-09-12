@@ -73,6 +73,7 @@
  * it.
  */
 #define TAG_ATTR_GAS_RESISTANCE		0x000d	/* u32, ohms */
+#define TAG_ATTR_BOOT_EPOCH		0x000e	/* u32, UTC at boot; write = now */
 
 /** Attribute storage for the Tag Monitor cluster. */
 struct tag_monitor_attrs {
@@ -90,6 +91,7 @@ struct tag_monitor_attrs {
 	uint8_t operating_mode;
 	uint16_t sampling_interval;
 	uint32_t gas_resistance;
+	uint32_t boot_epoch;
 };
 
 #define ZB_ZCL_DECLARE_TAG_MONITOR_ATTRIB_LIST(attr_list, attrs)               \
@@ -150,6 +152,10 @@ struct tag_monitor_attrs {
 		TAG_ATTR_GAS_RESISTANCE, ZB_ZCL_ATTR_TYPE_U32,                \
 		ZB_ZCL_ATTR_ACCESS_READ_ONLY | ZB_ZCL_ATTR_ACCESS_REPORTING,  \
 		SMART_TAG_MANUF_CODE, &(attrs)->gas_resistance)               \
+	ZB_ZCL_SET_MANUF_SPEC_ATTR_DESC(                                      \
+		TAG_ATTR_BOOT_EPOCH, ZB_ZCL_ATTR_TYPE_U32,                    \
+		ZB_ZCL_ATTR_ACCESS_READ_WRITE,                                \
+		SMART_TAG_MANUF_CODE, &(attrs)->boot_epoch)                   \
 	ZB_ZCL_FINISH_DECLARE_ATTRIB_LIST
 
 #define ZB_DECLARE_SMART_TAG_CLUSTER_LIST(cluster_list_name,                  \

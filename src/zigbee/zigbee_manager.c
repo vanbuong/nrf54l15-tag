@@ -181,6 +181,13 @@ static void zcl_device_cb(zb_bufid_t bufid)
 		} else if (attr_id == TAG_ATTR_SAMPLING_INTERVAL) {
 			config.sampling_interval_s =
 				param->cb_param.set_attr_value_param.values.data16;
+		} else if (attr_id == TAG_ATTR_BOOT_EPOCH) {
+			if (app_state_set_time_utc(
+				    param->cb_param.set_attr_value_param.values.data32) !=
+			    0) {
+				param->status = RET_INVALID_PARAMETER;
+			}
+			break;
 		} else {
 			param->status = RET_NOT_IMPLEMENTED;
 			break;

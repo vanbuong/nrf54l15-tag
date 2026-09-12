@@ -21,12 +21,31 @@ void test_battery_percent_mid(void)
 void test_sensor_data_packed_size(void)
 {
 	/*
-	 * Protocol v3 BLE Sensor Data payload. A silent layout change
-	 * would desynchronise every phone decoder — fail the build.
+	 * Protocol v4 BLE payloads. A silent layout change would
+	 * desynchronise every phone decoder — fail the build.
 	 */
 	TEST_ASSERT_EQUAL_UINT32(38, sizeof(sensor_data_t));
 	TEST_ASSERT_EQUAL_UINT32(17, sizeof(sensor_log_record_t));
 	TEST_ASSERT_EQUAL_UINT32(8, sizeof(event_record_t));
+	TEST_ASSERT_EQUAL_UINT32(40, sizeof(tag_config_t));
+	TEST_ASSERT_EQUAL_UINT32(42, sizeof(tag_statistics_t));
+	TEST_ASSERT_EQUAL_UINT32(10, sizeof(struct ble_log_chunk_header));
+	TEST_ASSERT_EQUAL_UINT32(4, SMART_TAG_PROTOCOL_VERSION);
+}
+
+void test_gas_alarm_floor(void)
+{
+	TEST_ASSERT_EQUAL_UINT32(0, smart_tag_gas_alarm_floor(0));
+	TEST_ASSERT_EQUAL_UINT32(70000, smart_tag_gas_alarm_floor(100000));
+}
+
+void test_boot_epoch_helpers(void)
+{
+	TEST_ASSERT_EQUAL_UINT32(0, smart_tag_boot_epoch_utc(0, 10));
+	TEST_ASSERT_EQUAL_UINT32(0, smart_tag_boot_epoch_utc(5, 10));
+	TEST_ASSERT_EQUAL_UINT32(990, smart_tag_boot_epoch_utc(1000, 10));
+	TEST_ASSERT_EQUAL_UINT32(0, smart_tag_utc_from_uptime(0, 10));
+	TEST_ASSERT_EQUAL_UINT32(1000, smart_tag_utc_from_uptime(990, 10));
 }
 
 void test_log_record_from_sample(void)
