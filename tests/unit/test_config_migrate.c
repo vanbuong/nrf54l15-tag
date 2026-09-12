@@ -167,3 +167,17 @@ void test_stats_rejects_bad_framed_blobs(void)
 	TEST_ASSERT_EQUAL_INT(-EINVAL, tag_stats_decode(blob, 2, &out));
 	TEST_ASSERT_EQUAL_INT(-EINVAL, tag_stats_decode(NULL, 8, &out));
 }
+
+void test_config_rejects_body_past_end(void)
+{
+	uint8_t blob[8];
+	tag_config_t out;
+	struct tag_settings_header header = {
+		.schema = TAG_CONFIG_SCHEMA,
+		.body_size = 100,
+	};
+
+	memcpy(blob, &header, sizeof(header));
+	TEST_ASSERT_EQUAL_INT(-EINVAL,
+			      tag_config_decode(blob, sizeof(blob), &out));
+}

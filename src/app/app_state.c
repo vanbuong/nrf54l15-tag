@@ -12,6 +12,7 @@
 #include "storage/sensor_log.h"
 #include "storage/config_storage.h"
 #include "ui/led_manager.h"
+#include "app_alarms.h"
 
 LOG_MODULE_REGISTER(app_state, LOG_LEVEL_INF);
 
@@ -172,110 +173,29 @@ static void drain_pending_events(void)
 static void check_thresholds(const sensor_data_t *data,
 			     const tag_config_t *config)
 {
-	uint8_t expected;
+	struct app_alarm_event events[APP_ALARM_MAX_EVENTS];
+	uint8_t n = 0;
+	uint16_t before = status.alarm_flags;
+	uint8_t expected = sensor_manager_expected_valid();
 
-	if ((data->valid & SENSOR_VALID_TEMP_RH) != 0U) {
-		if (data->temperature_c_x100 > config->temp_high_c_x100) {
-			if ((status.alarm_flags & ALARM_TEMP_HIGH) == 0U) {
-				status.alarm_flags |= ALARM_TEMP_HIGH;
-				queue_event(EVENT_TEMP_HIGH,
-					    EVENT_SEVERITY_ALARM,
-					    data->temperature_c_x100);
-			}
-		} else if (data->temperature_c_x100 < config->temp_low_c_x100) {
-			if ((status.alarm_flags & ALARM_TEMP_LOW) == 0U) {
-				status.alarm_flags |= ALARM_TEMP_LOW;
-				queue_event(EVENT_TEMP_LOW,
-					    EVENT_SEVERITY_ALARM,
-					    data->temperature_c_x100);
-			}
-		} else {
-			status.alarm_flags &=
-				(uint16_t)~(ALARM_TEMP_HIGH | ALARM_TEMP_LOW);
-		}
+	app_alarms_eval(data, config, expected, &status.alarm_flags, events, &n);
 
-		if (data->humidity_x100 > config->humidity_high_x100) {
-			if ((status.alarm_flags & ALARM_HUMIDITY_HIGH) == 0U) {
-				status.alarm_flags |= ALARM_HUMIDITY_HIGH;
-				queue_event(EVENT_HUMIDITY_HIGH,
-					    EVENT_SEVERITY_WARNING,
-					    (int16_t)data->humidity_x100);
-			}
-		} else {
-			status.alarm_flags &= (uint16_t)~ALARM_HUMIDITY_HIGH;
-		}
-	}
-
-	/*
-	 * Gas, protocol v3. Note the inverted sense: the BME688 reports a
-	 * resistance that FALLS as VOC concentration rises, so the alarm is a
-	 * floor, not a ceiling like temperature and humidity above.
-	 *
-	 * A zero threshold disables the check, which is the default: the
-	 * absolute resistance depends on the individual sensor and on how long
-	 * it has burned in, so a meaningful floor has to be set per unit after
-	 * commissioning rather than shipped as a constant.
-	 *
-	 * The event value is the reading in kOhm - gas_resistance_ohm is 32-bit
-	 * and event_record_t.value is an int16_t, so ohms would overflow it.
-	 */
-	if ((data->valid & SENSOR_VALID_GAS) != 0U &&
-	    config->gas_low_threshold_ohm != 0U) {
-		if (data->gas_resistance_ohm < config->gas_low_threshold_ohm) {
-			if ((status.alarm_flags & ALARM_GAS_LOW) == 0U) {
-				status.alarm_flags |= ALARM_GAS_LOW;
-				queue_event(EVENT_GAS_LOW,
-					    EVENT_SEVERITY_WARNING,
-					    (int16_t)MIN(data->gas_resistance_ohm / 1000U,
-							 (uint32_t)INT16_MAX));
-			}
-		} else {
-			status.alarm_flags &= (uint16_t)~ALARM_GAS_LOW;
-		}
+	if ((status.alarm_flags & ALARM_SENSOR_FAULT) != 0U &&
+	    (before & ALARM_SENSOR_FAULT) == 0U) {
+		statistics.sensor_faults++;
 	}
 
 	if ((data->valid & SENSOR_VALID_BATTERY) != 0U) {
-		if (data->battery_mv < config->battery_low_mv) {
-			if ((status.alarm_flags & ALARM_BATTERY_LOW) == 0U) {
-				status.alarm_flags |= ALARM_BATTERY_LOW;
-				queue_event(EVENT_BATTERY_LOW,
-					    EVENT_SEVERITY_WARNING,
-					    (int16_t)data->battery_mv);
-			}
-		} else if (data->battery_mv >=
-			   (uint16_t)(config->battery_low_mv +
-				      SMART_TAG_BATTERY_HYSTERESIS_MV)) {
-			status.alarm_flags &= (uint16_t)~ALARM_BATTERY_LOW;
-		}
-
 		if (statistics.min_battery_mv == 0U ||
 		    data->battery_mv < statistics.min_battery_mv) {
 			statistics.min_battery_mv = data->battery_mv;
 		}
 	}
 
-	/*
-	 * Compare against what this board's fitted sensors can actually
-	 * produce, not a fixed set. This used to be a hard-coded four-bit
-	 * constant, which only worked while there was exactly one sensor set;
-	 * it would latch ALARM_SENSOR_FAULT forever on any board that has
-	 * different sensors - including one that reports MORE, since the test
-	 * was an equality.
-	 *
-	 * Subset, not equality: extra bits (the gyroscope, which is only read
-	 * while moving) are not a fault.
-	 */
-	expected = sensor_manager_expected_valid();
-
-	if ((data->valid & expected) != expected) {
-		if ((status.alarm_flags & ALARM_SENSOR_FAULT) == 0U) {
-			status.alarm_flags |= ALARM_SENSOR_FAULT;
-			statistics.sensor_faults++;
-			queue_event(EVENT_SENSOR_FAULT, EVENT_SEVERITY_WARNING,
-				    (int16_t)data->valid);
-		}
-	} else {
-		status.alarm_flags &= (uint16_t)~ALARM_SENSOR_FAULT;
+	for (uint8_t i = 0; i < n; i++) {
+		queue_event((event_type_t)events[i].type,
+			    (event_severity_t)events[i].severity,
+			    events[i].value);
 	}
 }
 

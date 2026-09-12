@@ -71,6 +71,20 @@ void test_stats_v0_sets_epoch_zero(void);
 void test_stats_roundtrip_keeps_epoch(void);
 void test_encode_rejects_undersized_buffer(void);
 void test_stats_rejects_bad_framed_blobs(void);
+void test_config_rejects_body_past_end(void);
+
+void test_alarms_temp_high_latches_once(void);
+void test_alarms_temp_clears_in_window(void);
+void test_alarms_battery_needs_hysteresis_to_clear(void);
+void test_alarms_gas_zero_threshold_disabled(void);
+void test_alarms_gas_floor_fires_and_clears(void);
+void test_alarms_sensor_fault_is_subset_not_equality(void);
+void test_alarms_humidity_high(void);
+
+void test_motion_start_and_stop_after_timeout(void);
+void test_tamper_after_settled_shock_and_reorient(void);
+void test_shock_without_settle_is_not_tamper(void);
+void test_reorient_without_shock_is_not_tamper(void);
 
 int main(void)
 {
@@ -139,6 +153,20 @@ int main(void)
 	RUN_TEST(test_stats_roundtrip_keeps_epoch);
 	RUN_TEST(test_encode_rejects_undersized_buffer);
 	RUN_TEST(test_stats_rejects_bad_framed_blobs);
+	RUN_TEST(test_config_rejects_body_past_end);
+
+	RUN_TEST(test_alarms_temp_high_latches_once);
+	RUN_TEST(test_alarms_temp_clears_in_window);
+	RUN_TEST(test_alarms_battery_needs_hysteresis_to_clear);
+	RUN_TEST(test_alarms_gas_zero_threshold_disabled);
+	RUN_TEST(test_alarms_gas_floor_fires_and_clears);
+	RUN_TEST(test_alarms_sensor_fault_is_subset_not_equality);
+	RUN_TEST(test_alarms_humidity_high);
+
+	RUN_TEST(test_motion_start_and_stop_after_timeout);
+	RUN_TEST(test_tamper_after_settled_shock_and_reorient);
+	RUN_TEST(test_shock_without_settle_is_not_tamper);
+	RUN_TEST(test_reorient_without_shock_is_not_tamper);
 
 	return UNITY_END();
 }

@@ -1,6 +1,8 @@
 #include "unity.h"
 #include "app/smart_tag.h"
 
+#include <stddef.h>
+
 void test_battery_percent_full(void)
 {
 	TEST_ASSERT_EQUAL_UINT8(100, smart_tag_battery_percent(3000));
@@ -31,6 +33,8 @@ void test_sensor_data_packed_size(void)
 	TEST_ASSERT_EQUAL_UINT32(42, sizeof(tag_statistics_t));
 	TEST_ASSERT_EQUAL_UINT32(10, sizeof(struct ble_log_chunk_header));
 	TEST_ASSERT_EQUAL_UINT32(4, SMART_TAG_PROTOCOL_VERSION);
+	TEST_ASSERT_EQUAL_UINT32(6, offsetof(struct ble_log_chunk_header, first_seq));
+	TEST_ASSERT_EQUAL_INT(EVENT_GAS_LOW + 1, EVENT_TIME_SET);
 }
 
 void test_gas_alarm_floor(void)

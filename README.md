@@ -191,6 +191,7 @@ application layer; neither owns the sensors.
         app_main.c         startup, button, state sequencing
         app_state.c/h      state machine, live status, fan-out to protocols
         app_config.c/h     configuration validation and effective values
+        app_alarms.c/h     threshold latching (host-testable)
         smart_tag.h        shared wire types (host-testable)
         board_id.h         per-board model string (device tree)
       sensors/
@@ -552,17 +553,21 @@ exercises the firmware structure, BLE, and the build itself.
 
 ## Host tests and CI
 
-Policy modules (motion classifier, shock detector, Zigbee reporting, config
-validation, flash logger, config migrate, wire types) are unit-tested on the
-host with the Unity framework. No nRF Connect SDK is required:
+Policy modules are unit-tested on the host with Unity. **No nRF Connect
+SDK is required.** Setup, packages, and expected output:
 
-    make -C tests/unit test
-    make -C tests/unit coverage
-    make -C tests/unit cppcheck
+[`tests/README.md`](tests/README.md)
 
-See [`tests/README.md`](tests/README.md). GitHub Actions runs the same three
-commands on every push and pull request (`.github/workflows/ci.yml`). A full
-`west build` of NCS is not in the PR gate.
+```
+sudo apt-get install -y gcc make python3 lcov cppcheck   # once
+make -C tests/unit test
+make -C tests/unit coverage    # HTML: coverage/index.html
+make -C tests/unit cppcheck
+```
+
+GitHub Actions runs the same three commands on every push and pull
+request (`.github/workflows/ci.yml`). A full `west build` of NCS is not
+in the PR gate.
 
 ## Suggested next steps
 
