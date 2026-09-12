@@ -553,18 +553,21 @@ exercises the firmware structure, BLE, and the build itself.
 
 ## Host tests and CI
 
-Policy modules (motion classifier, shock detector, motion manager, Zigbee
-reporting, config validation, alarm policy, flash logger, config migrate,
-wire types) are unit-tested on the host with the Unity framework. No nRF
-Connect SDK is required:
+Policy modules are unit-tested on the host with Unity. **No nRF Connect
+SDK is required.** Setup, packages, and expected output:
 
-    make -C tests/unit test
-    make -C tests/unit coverage
-    make -C tests/unit cppcheck
+[`tests/README.md`](tests/README.md)
 
-See [`tests/README.md`](tests/README.md). GitHub Actions runs the same three
-commands on every push and pull request (`.github/workflows/ci.yml`). A full
-`west build` of NCS is not in the PR gate.
+```
+sudo apt-get install -y gcc make python3 lcov cppcheck   # once
+make -C tests/unit test
+make -C tests/unit coverage    # HTML: coverage/index.html
+make -C tests/unit cppcheck
+```
+
+GitHub Actions runs the same three commands on every push and pull
+request (`.github/workflows/ci.yml`). A full `west build` of NCS is not
+in the PR gate.
 
 ## Suggested next steps
 

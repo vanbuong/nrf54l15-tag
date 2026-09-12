@@ -721,6 +721,11 @@ to debug over RTT.
 
 ### 13.2 Unit tests (Unity, host)
 
+**Setup and run:** see [`tests/README.md`](../tests/README.md). Install
+`gcc make python3 lcov cppcheck` (no NCS, west, or hardware), then
+`make -C tests/unit test`. Coverage HTML is `coverage/index.html`. GitHub
+Actions runs the same commands in `.github/workflows/ci.yml`.
+
 | ID | Module | Covers | Req |
 |---|---|---|---|
 | UT-M1 | motion_classifier | rest → not active; 1.2 g → active; dominant axis; unknown when all small | FR-M1, FR-M4 |
